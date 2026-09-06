@@ -79,7 +79,12 @@ def clean_head(worktree: Path) -> str:
     )
     if any((git_dir / name).exists() for name in operations):
         raise RuntimeError("A Git operation is in progress")
-    if run_git("status", "--porcelain", "--untracked-files=normal", cwd=worktree):
+    status = run_git("status", "--porcelain", "--untracked-files=all", cwd=worktree)
+    dirty = [
+        line for line in status.splitlines()
+        if line and line != "?? .qwen/settings.json"
+    ]
+    if dirty:
         raise RuntimeError("Worktree has uncommitted or untracked files")
     return run_git("rev-parse", "HEAD", cwd=worktree)
 

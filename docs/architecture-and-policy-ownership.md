@@ -112,6 +112,7 @@ The structure is intentional: host-global deployable assets are separated from p
 26. Existing-project migration is transactional at the host/AO layer: it requires global AO quiescence, snapshots the complete prior AO config plus host deployment state, preserves unknown/project-specific config keys, and automatically rolls back host files, installer state, and AO config if cutover fails.
 27. Existing-project repository contracts are never rewritten by host migration. Contract deduplication occurs in a normal project branch/PR after host/AO cutover, preserving repository ownership and reviewability.
 28. Deployment verification may be project-aware: when a project ID is supplied, it must assert the exact short AO rule-loader strings, Qwen worker/orchestrator selection, and refresh hook after registration or migration.
+29. AO Qwen startup may create an untracked repository-root `.qwen/settings.json` containing AO hook wiring before the orchestrator refresh hook runs. The refresh helper treats exactly that untracked path as runtime state, but continues to fail closed on every other tracked modification or untracked path; Git itself remains responsible for refusing an upstream fast-forward that would overwrite the runtime file.
 
 ## Deduplication rules
 

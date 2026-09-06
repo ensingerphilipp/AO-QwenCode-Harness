@@ -39,6 +39,26 @@ class RefreshTests(unittest.TestCase):
         records=list((tmp/"state/ao-orchestrator-refresh/demo").glob("*/last-run.json"))
         self.assertEqual(len(records),1); self.assertEqual(json.loads(records[0].read_text())["head"],target)
 
+    def test_ao_qwen_runtime_settings_do_not_block_refresh(self):
+        tmp, source, wt, data = self.make_fixture()
+        (wt / ".qwen").mkdir()
+        (wt / ".qwen/settings.json").write_text('{"hooks": {}}\n')
+        (source / "a.txt").write_text("two\n")
+        self.git(source, "commit", "-am", "two")
+        self.git(source, "push", "origin", "main")
+        target = self.git(source, "rev-parse", "HEAD")
+        result = self.run_helper(wt, data)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.git(wt, "rev-parse", "HEAD"), target)
+        self.assertTrue((wt / ".qwen/settings.json").is_file())
+
+    def test_other_untracked_file_still_fails_closed(self):
+        tmp, source, wt, data = self.make_fixture()
+        (wt / "dirty.txt").write_text("dirty\n")
+        result = self.run_helper(wt, data)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("uncommitted or untracked", result.stderr)
+
     def test_worker_path_is_noop(self):
         tmp, source, wt, data = self.make_fixture(); worker=data/"worktrees/demo/worker/demo-worker"
         worker.parent.mkdir(parents=True); self.git(source,"worktree","add","-b","ao/demo-worker",str(worker),"HEAD")

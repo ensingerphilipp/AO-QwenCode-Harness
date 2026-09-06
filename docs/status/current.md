@@ -18,7 +18,7 @@ Last updated: 2026-09-06
 
 ## Active next phase
 
-K — Premiumizearr-Nova host/AO cutover and repository contract migration are merged; runtime qualification with a fresh orchestrator is the active work.
+K — Premiumizearr-Nova migration is merged. Fresh orchestrator runtime qualification found and fixed AO-generated `.qwen/settings.json` refresh ordering; final live re-verification is active.
 
 ## Remaining
 
