@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "target": "pr-5",
+  "effort": "medium",
+  "verdict": {
+    "event": "COMMENT",
+    "verdictLine": "COMMENT: 1 finding (base event APPROVE)",
+    "baseEvent": "APPROVE",
+    "cappedBy": []
+  },
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "Critical",
+      "confidence": "low",
+      "source": "review",
+      "summary": "Unverified severe premise",
+      "shortSummary": "Unverified severe premise",
+      "failureScenario": "A concrete scenario",
+      "witness": "review pass over internal/app/app.go",
+      "suggestedFix": "Verify the premise against the runtime contract",
+      "category": "correctness",
+      "locations": [
+        {
+          "file": "internal/app/app.go",
+          "line": 12,
+          "anchor": "func counter()"
+        }
+      ],
+      "assetFiles": [],
+      "assets": [],
+      "outcomeNote": "Premise not verified by any executed probe."
+    }
+  ],
+  "counts": {
+    "total": 1,
+    "bySeverity": {
+      "Critical": 1,
+      "Suggestion": 0,
+      "Nice to have": 0
+    },
+    "byConfidence": {
+      "high": 0,
+      "low": 1
+    },
+    "held": 0,
+    "byOutcome": {
+      "fixed": 0,
+      "skipped": 0,
+      "no_change_needed": 0
+    }
+  },
+  "markdownReportPath": ".qwen/reviews/pr-5-review.md"
+}
