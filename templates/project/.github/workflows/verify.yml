@@ -1,0 +1,23 @@
+name: Verify
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify
+    runs-on: {{CI_RUNNER}}
+    timeout-minutes: {{CI_TIMEOUT_MINUTES}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+{{CI_SETUP_STEPS}}
+
+      - name: Verify
+        shell: bash
+        run: bash scripts/verify

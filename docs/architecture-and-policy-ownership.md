@@ -43,7 +43,10 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `templates/project/ARCHITECTURE.md` | Project baseline | Architecture and technical-decision template |
 | `templates/project/QWEN.md` | Project baseline | Thin repository-local Qwen entry point |
 | `templates/project/.qwen/review-rules.md` | Project baseline | Project-only semantic invariants |
-| `templates/project/.qwen/review-config.json` | Project baseline | Machine-readable review risk metadata |
+| `templates/project/.qwen/review-config.json` | Project baseline | Machine-readable additive review risk metadata |
+| `templates/project/.agent-harness.json` | Project baseline | Project lifecycle feature configuration; semantic review enabled by default |
+| `templates/project/template-manifest.json` | Project baseline | Required rendering/copy/merge contract for initialization |
+| `config/project-harness.schema.json` | Harness configuration | Machine-readable schema for `.agent-harness.json` |
 | `templates/project/scripts/verify` | Project baseline | Deterministic verification entry point |
 | `templates/project/.github/workflows/verify.yml` | Project baseline | CI wrapper invoking `scripts/verify` |
 
@@ -89,6 +92,8 @@ The structure is intentional: host-global deployable assets are separated from p
 10. Semantic review is enabled by default but may be disabled explicitly for a project. A disabled lifecycle still requires the same exact PR/SHA handoff and deterministic CI qualification; it stops before semantic-review dispatch and creates no semantic-review publication.
 11. Pull-request-based development is the harness baseline for implementation changes intended for integration; read-only or no-change tasks do not invent pull requests.
 12. Project-specific semantic-review risk metadata is additive only and schema-validated through `.qwen/review-config.json`; repositories cannot remove global protected paths or labels. The review Skill reads policy only from the tracked repository `HEAD`, rejects untracked local policy, and fails closed on malformed configuration before semantic inference.
+13. Project lifecycle feature flags belong in `.agent-harness.json`, not in Qwen review-risk configuration. Its schema is host-independent; semantic review defaults to enabled.
+14. Project template sources may contain only tokens declared by `template-manifest.json`. Initialization must fail closed until every required token is resolved from inspected facts or explicit human decisions.
 
 ## Deduplication rules
 
@@ -100,6 +105,14 @@ A rule may be referenced in multiple places, but it is defined normatively in on
 - Product HITL boundaries are defined by `PROJECT.md`; global rules only require Qwen/AO to respect them.
 - Architecture facts are defined by `ARCHITECTURE.md`; review rules may reference them but should not duplicate them.
 - Universal Qwen behavior is defined by global `QWEN.md`, not copied into every project.
+
+## Project template rendering contract
+
+Files under `templates/project/` are production template sources. A rendered project baseline is deployable only after every token declared in `template-manifest.json` has been resolved, all copy-as-is files and merge fragments have been applied idempotently, `scripts/verify` has been supplied by the selected verification profile, and template validation passes.
+
+The initializer must never substitute guessed project facts merely to complete rendering. Missing product policy, architecture decisions, security/persistence boundaries, CI setup, or other required values are human-resolution blockers.
+
+`gitignore.harness.fragment` is merged into an existing `.gitignore` rather than replacing repository-owned ignore rules.
 
 ## Multi-stack strategy
 

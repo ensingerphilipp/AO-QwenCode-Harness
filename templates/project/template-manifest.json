@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "renderedFiles": {
+    "PROJECT.md": [
+      "PROJECT_NAME", "PROJECT_PURPOSE", "PROJECT_GOALS", "PROJECT_NON_GOALS",
+      "AUTONOMOUS_CHANGE_SCOPE", "HITL_BOUNDARIES", "PUBLIC_CONTRACTS",
+      "SECURITY_BOUNDARIES", "PERSISTENCE_STATE", "DEPLOYMENT_SUPPORT_POLICY",
+      "PROJECT_ACCEPTANCE_NOTES"
+    ],
+    "ARCHITECTURE.md": [
+      "PROJECT_NAME", "SYSTEM_OVERVIEW", "COMPONENT_BOUNDARIES", "PRIMARY_FLOWS",
+      "ARCHITECTURE_STATE_AND_PERSISTENCE", "EXTERNAL_SYSTEMS", "RUNTIME_DEPENDENCIES",
+      "BUILD_AND_RELEASE", "CI_VERIFICATION_NOTES", "APPROVED_TECHNICAL_DECISIONS",
+      "KNOWN_ARCHITECTURE_RISKS"
+    ],
+    ".qwen/review-rules.md": ["PROJECT_REVIEW_INVARIANTS"],
+    ".github/workflows/verify.yml": ["CI_RUNNER", "CI_TIMEOUT_MINUTES", "CI_SETUP_STEPS"]
+  },
+  "copyFiles": ["QWEN.md", ".qwen/review-config.json", ".agent-harness.json"],
+  "mergeFragments": {"gitignore.harness.fragment": ".gitignore"},
+  "requiredGeneratedFiles": ["scripts/verify"]
+}

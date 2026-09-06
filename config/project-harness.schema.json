@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ensingerphilipp/AO-QwenCode-Harness/blob/main/config/project-harness.schema.json",
+  "title": "AO Qwen Code project harness configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "semanticReview"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "semanticReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean", "default": true }
+      }
+    }
+  }
+}
