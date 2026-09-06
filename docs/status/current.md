@@ -18,11 +18,11 @@ Last updated: 2026-09-06
 
 ## Active next phase
 
-K — migration tooling qualified; live Premiumizearr-Nova cutover is pending explicit operator approval and AO quiescence.
+K — Premiumizearr-Nova host/AO cutover completed transactionally; repository contract migration is open as PR #84 and is not merged.
 
 ## Remaining
 
-- K — live Premiumizearr-Nova host/AO cutover and repository contract migration
+- K — merge/qualify Premiumizearr-Nova repository contract migration PR #84
 - L — fresh-host/fresh-project end-to-end qualification
 
 Historical checkpoint documents are immutable records of earlier state and may describe superseded progress. This file is the current progress authority.
