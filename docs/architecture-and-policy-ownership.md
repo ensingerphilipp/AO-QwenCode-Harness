@@ -50,6 +50,8 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `templates/verify/generic/scripts/verify` | Verification baseline | Fail-fast rendered implementation of the `scripts/verify` interface |
 | `templates/verify/*/profile.json` | Verification profiles | Evidence-driven stack/composite check and CI-setup candidates |
 | `config/verification-profile.schema.json` | Harness configuration | Machine-readable verification-profile contract |
+| `templates/prompts/inspect-project.md` | Project onboarding | Read-only evidence-driven first-project inspection procedure |
+| `config/project-inspection.schema.json` | Project onboarding | Machine-readable inspection result and template-input contract |
 | `templates/project/.github/workflows/verify.yml` | Project baseline | CI wrapper invoking `scripts/verify` |
 
 ## Target repository structure
@@ -97,6 +99,7 @@ The structure is intentional: host-global deployable assets are separated from p
 13. Project lifecycle feature flags belong in `.agent-harness.json`, not in Qwen review-risk configuration. Its schema is host-independent; semantic review defaults to enabled.
 14. Project template sources may contain only tokens declared by `template-manifest.json`. Initialization must fail closed until every required token is resolved from inspected facts or explicit human decisions.
 15. Verification profiles separate inspection facts from render tokens and declare both machine-readably. Profile candidates are selected only when supported by repository evidence; they cannot silently introduce new quality policy.
+16. First-project inspection is read-only and evidence-driven. Its machine result must populate every project-template token or identify an explicit human decision; missing facts are never converted into guessed policy.
 
 ## Deduplication rules
 
