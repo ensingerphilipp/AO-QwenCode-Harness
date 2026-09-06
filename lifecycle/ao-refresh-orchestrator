@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Fast-forward an AO orchestrator worktree to its remote default branch."""
+from __future__ import annotations
+
+import datetime as dt
+import fcntl
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+from pathlib import Path
+
+GIT_TIMEOUT_SECONDS = 45
+STATE_VERSION = 3
+
+
+def run_git(*args: str, cwd: Path) -> str:
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="Never")
+    with subprocess.Popen(
+        ["git", *args], cwd=cwd, env=env, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, start_new_session=True,
+    ) as proc:
+        try:
+            out, err = proc.communicate(timeout=GIT_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            raise RuntimeError(f"Git timed out after {GIT_TIMEOUT_SECONDS} seconds") from None
+        if proc.returncode:
+            raise RuntimeError(f"git {' '.join(args)} failed ({proc.returncode}): {err.strip()}")
+        return out.strip()
+
+def ao_context(cwd: Path) -> tuple[str, Path] | None:
+    project = os.environ.get("AO_PROJECT_ID", "").strip()
+    data_dir = Path(os.environ.get("AO_DATA_DIR", Path.home() / ".ao/data")).expanduser()
+    if not project:
+        return None
+    expected_root = (data_dir / "worktrees" / project / "orchestrator").resolve()
+    try:
+        cwd.resolve().relative_to(expected_root)
+    except ValueError:
+        return None
+    return project, expected_root
+
+
+def state_dir(project: str, worktree: Path) -> Path:
+    root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")).expanduser()
+    safe_project = re.sub(r"[^A-Za-z0-9_.-]+", "_", project)
+    safe_worktree = re.sub(r"[^A-Za-z0-9_.-]+", "_", worktree.name)
+    if not safe_project or safe_project in {".", ".."}:
+        raise RuntimeError("Invalid AO project ID for refresh state")
+    return root / "ao-orchestrator-refresh" / safe_project / safe_worktree
+
+
+def select_remote(worktree: Path) -> str:
+    remotes = [x for x in run_git("remote", cwd=worktree).splitlines() if x]
+    preferred = os.environ.get("AO_REFRESH_REMOTE", "origin").strip()
+    if preferred in remotes:
+        return preferred
+    if len(remotes) == 1:
+        return remotes[0]
+    raise RuntimeError("Cannot determine refresh remote; set AO_REFRESH_REMOTE")
+
+
+def remote_default_branch(worktree: Path, remote: str) -> str:
+    local_ref = run_git("symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD", cwd=worktree)
+    prefix = f"{remote}/"
+    if local_ref.startswith(prefix) and len(local_ref) > len(prefix):
+        return local_ref[len(prefix):]
+    raise RuntimeError(f"Remote default branch is not recorded for {remote}; run git remote set-head {remote} --auto")
+
+def clean_head(worktree: Path) -> str:
+    git_dir = Path(run_git("rev-parse", "--absolute-git-dir", cwd=worktree))
+    operations = (
+        "MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge",
+        "rebase-apply", "BISECT_LOG", "sequencer",
+    )
+    if any((git_dir / name).exists() for name in operations):
+        raise RuntimeError("A Git operation is in progress")
+    if run_git("status", "--porcelain", "--untracked-files=normal", cwd=worktree):
+        raise RuntimeError("Worktree has uncommitted or untracked files")
+    return run_git("rev-parse", "HEAD", cwd=worktree)
+
+
+def write_record(state: Path, worktree: Path, **values: object) -> None:
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    data = {
+        "time": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "version": STATE_VERSION,
+        "worktree": str(worktree),
+        **values,
+    }
+    tmp = state / "last-run.tmp"
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    os.chmod(tmp, 0o600)
+    tmp.replace(state / "last-run.json")
+
+
+def resolve_default_branch(worktree: Path, remote: str) -> str:
+    try:
+        return remote_default_branch(worktree, remote)
+    except RuntimeError:
+        output = run_git("ls-remote", "--symref", remote, "HEAD", cwd=worktree)
+        match = re.search(r"^ref: refs/heads/([^\s]+)\s+HEAD$", output, re.MULTILINE)
+        if not match:
+            raise RuntimeError(f"Cannot determine default branch for remote {remote}") from None
+        return match.group(1)
+
+def refresh() -> None:
+    worktree = Path.cwd().resolve()
+    context = ao_context(worktree)
+    if context is None:
+        return
+    project, _ = context
+    if Path(run_git("rev-parse", "--show-toplevel", cwd=worktree)).resolve() != worktree:
+        raise RuntimeError("Expected the AO orchestrator worktree root")
+    if not (worktree / ".git").is_file():
+        raise RuntimeError("Expected an AO linked worktree, not a primary repository")
+    state = state_dir(project, worktree)
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state / "refresh.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            before = clean_head(worktree)
+            remote = select_remote(worktree)
+            branch = resolve_default_branch(worktree, remote)
+            current_branch = run_git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=worktree)
+            if current_branch == branch:
+                raise RuntimeError("Refusing to refresh an AO worktree on the remote default branch")
+            run_git("fetch", "--no-tags", remote, f"refs/heads/{branch}", cwd=worktree)
+            target = run_git("rev-parse", "FETCH_HEAD^{commit}", cwd=worktree)
+            try:
+                run_git("merge-base", "--is-ancestor", before, target, cwd=worktree)
+            except RuntimeError:
+                raise RuntimeError("Orchestrator is ahead of or diverged from upstream") from None
+            if clean_head(worktree) != before:
+                raise RuntimeError("Worktree changed during refresh")
+            if before != target:
+                run_git("-c", "merge.autostash=false", "merge", "--ff-only", target, cwd=worktree)
+            if clean_head(worktree) != target:
+                raise RuntimeError("Worktree does not match the fetched default-branch commit")
+            write_record(state, worktree, status="ok", project=project, remote=remote,
+                         defaultBranch=branch, before=before, head=target)
+        except Exception as exc:
+            write_record(state, worktree, status="error", project=project, error=str(exc))
+            raise
+
+
+def main() -> int:
+    action = sys.argv[1:] or ["run"]
+    try:
+        if action == ["run"]:
+            refresh()
+        elif action == ["status"]:
+            context = ao_context(Path.cwd().resolve())
+            if context is None:
+                raise RuntimeError("status must run from an AO orchestrator worktree")
+            path = state_dir(context[0], Path.cwd().resolve()) / "last-run.json"
+            print(path.read_text() if path.exists() else "No refresh recorded yet.")
+        else:
+            raise RuntimeError("Usage: ao-refresh-orchestrator [run|status]")
+    except Exception as exc:
+        print(f"AO refresh: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

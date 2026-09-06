@@ -52,6 +52,7 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `config/verification-profile.schema.json` | Harness configuration | Machine-readable verification-profile contract |
 | `templates/prompts/inspect-project.md` | Project onboarding | Read-only evidence-driven first-project inspection procedure |
 | `config/project-inspection.schema.json` | Project onboarding | Machine-readable inspection result and template-input contract |
+| `lifecycle/ao-refresh-orchestrator` | Lifecycle | Core pre-start fast-forward of AO orchestrator worktrees |
 | `templates/project/.github/workflows/verify.yml` | Project baseline | CI wrapper invoking `scripts/verify` |
 
 ## Target repository structure
@@ -100,6 +101,7 @@ The structure is intentional: host-global deployable assets are separated from p
 14. Project template sources may contain only tokens declared by `template-manifest.json`. Initialization must fail closed until every required token is resolved from inspected facts or explicit human decisions.
 15. Verification profiles separate inspection facts from render tokens and declare both machine-readably. Profile candidates are selected only when supported by repository evidence; they cannot silently introduce new quality policy.
 16. First-project inspection is read-only and evidence-driven. Its machine result must populate every project-template token or identify an explicit human decision; missing facts are never converted into guessed policy.
+17. Orchestrator worktree refresh is a core lifecycle utility and must derive project/worktree/remote/default-branch state dynamically; it may only fast-forward a clean AO orchestrator linked worktree. Reboot session reconciliation is optional/manual recovery and is not part of baseline startup.
 
 ## Deduplication rules
 
