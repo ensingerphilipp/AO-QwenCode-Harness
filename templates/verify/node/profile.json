@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "node",
+  "description": "Node.js repositories whose package manager and scripts are established from repository metadata.",
+  "detectionSignals": [
+    "package.json",
+    "npm lockfile",
+    "pnpm lockfile",
+    "yarn lockfile"
+  ],
+  "requiredInspectionFacts": [
+    "NODE_VERSION",
+    "NODE_PACKAGE_MANAGER",
+    "NODE_INSTALL_COMMAND",
+    "NODE_SELECTED_SCRIPTS"
+  ],
+  "requiredRenderTokens": [
+    "NODE_INSTALL_COMMAND",
+    "NODE_VERIFICATION_SCRIPT_COMMANDS",
+    "NODE_VERSION"
+  ],
+  "verificationCandidates": [
+    {
+      "id": "install-integrity",
+      "includeWhen": "the accepted verification contract requires a clean dependency install",
+      "template": "{{NODE_INSTALL_COMMAND}}"
+    },
+    {
+      "id": "scripts",
+      "includeWhen": "each selected script exists in package.json and is accepted project verification",
+      "template": "{{NODE_VERIFICATION_SCRIPT_COMMANDS}}"
+    }
+  ],
+  "ciSetupCandidates": [
+    {
+      "id": "setup-node",
+      "includeWhen": "GitHub-hosted CI must install the repository Node.js version",
+      "template": "uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\nwith:\n  node-version: {{NODE_VERSION}}"
+    }
+  ]
+}

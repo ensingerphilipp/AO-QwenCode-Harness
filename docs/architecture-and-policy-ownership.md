@@ -47,7 +47,9 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `templates/project/.agent-harness.json` | Project baseline | Project lifecycle feature configuration; semantic review enabled by default |
 | `templates/project/template-manifest.json` | Project baseline | Required rendering/copy/merge contract for initialization |
 | `config/project-harness.schema.json` | Harness configuration | Machine-readable schema for `.agent-harness.json` |
-| `templates/project/scripts/verify` | Project baseline | Deterministic verification entry point |
+| `templates/verify/generic/scripts/verify` | Verification baseline | Fail-fast rendered implementation of the `scripts/verify` interface |
+| `templates/verify/*/profile.json` | Verification profiles | Evidence-driven stack/composite check and CI-setup candidates |
+| `config/verification-profile.schema.json` | Harness configuration | Machine-readable verification-profile contract |
 | `templates/project/.github/workflows/verify.yml` | Project baseline | CI wrapper invoking `scripts/verify` |
 
 ## Target repository structure
@@ -94,6 +96,7 @@ The structure is intentional: host-global deployable assets are separated from p
 12. Project-specific semantic-review risk metadata is additive only and schema-validated through `.qwen/review-config.json`; repositories cannot remove global protected paths or labels. The review Skill reads policy only from the tracked repository `HEAD`, rejects untracked local policy, and fails closed on malformed configuration before semantic inference.
 13. Project lifecycle feature flags belong in `.agent-harness.json`, not in Qwen review-risk configuration. Its schema is host-independent; semantic review defaults to enabled.
 14. Project template sources may contain only tokens declared by `template-manifest.json`. Initialization must fail closed until every required token is resolved from inspected facts or explicit human decisions.
+15. Verification profiles separate inspection facts from render tokens and declare both machine-readably. Profile candidates are selected only when supported by repository evidence; they cannot silently introduce new quality policy.
 
 ## Deduplication rules
 
@@ -118,7 +121,7 @@ The initializer must never substitute guessed project facts merely to complete r
 
 The harness must remain technology-stack neutral at the global policy level. Stack-specific behavior belongs in project bootstrap output and verification templates.
 
-Baseline verification templates may cover Go, Node/TypeScript, Python, Rust and composite stacks. When a repository does not fit a standard template, first-project inspection must derive an exact `scripts/verify` implementation from observed project tooling and clearly surface unsupported policy decisions for human approval.
+Verification profiles cover Go, Node/TypeScript, Python, Rust, and Go+Node composition as evidence-driven accelerators. A profile is never automatic policy: inspection must confirm each selected check from repository tooling or explicit project policy. The generic verifier renders the selected preflight and check steps into the single `scripts/verify` authority. When no profile fits, inspection derives that script directly from observed commands and surfaces ambiguous policy for human approval.
 
 ## Project onboarding
 

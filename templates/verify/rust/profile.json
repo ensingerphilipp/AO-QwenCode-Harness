@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "rust",
+  "description": "Rust repositories using Cargo and a repository-declared or explicitly approved Rust toolchain.",
+  "detectionSignals": [
+    "Cargo.toml",
+    "rust-toolchain.toml",
+    "rust-toolchain"
+  ],
+  "requiredInspectionFacts": [
+    "RUST_TOOLCHAIN_SOURCE",
+    "RUST_CARGO_SCOPE",
+    "RUST_CLIPPY_POLICY"
+  ],
+  "requiredRenderTokens": [
+    "RUST_CARGO_SCOPE",
+    "RUST_CLIPPY_ARGS",
+    "RUST_TEST_ARGS",
+    "RUST_BUILD_ARGS"
+  ],
+  "verificationCandidates": [
+    {
+      "id": "format",
+      "includeWhen": "rustfmt is part of the accepted project toolchain",
+      "template": "cargo fmt --check {{RUST_CARGO_SCOPE}}"
+    },
+    {
+      "id": "clippy",
+      "includeWhen": "Clippy is configured or approved as a required gate",
+      "template": "cargo clippy {{RUST_CLIPPY_ARGS}}"
+    },
+    {
+      "id": "test",
+      "includeWhen": "Cargo tests are part of accepted verification",
+      "template": "cargo test {{RUST_TEST_ARGS}}"
+    },
+    {
+      "id": "build",
+      "includeWhen": "Cargo build is part of accepted verification",
+      "template": "cargo build {{RUST_BUILD_ARGS}}"
+    }
+  ],
+  "ciSetupCandidates": [
+    {
+      "id": "rustup",
+      "includeWhen": "CI must install the repository-declared Rust toolchain",
+      "template": "Install the exact toolchain derived from rust-toolchain.toml/rust-toolchain or approved project policy using rustup."
+    }
+  ]
+}

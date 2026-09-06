@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+on_error() {
+  local status=$?
+  printf 'verify: FAILED (exit %d) at line %s: %s\n' \
+    "$status" "${BASH_LINENO[0]:-unknown}" "$BASH_COMMAND" >&2
+  exit "$status"
+}
+trap on_error ERR
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  printf 'verify: must run inside a Git repository\n' >&2
+  exit 2
+}
+cd "$repo_root"
+
+printf 'verify: repository %s\n' "$repo_root"
+
+{{VERIFY_PREFLIGHT}}
+
+{{VERIFY_STEPS}}
+
+printf 'verify: PASS\n'

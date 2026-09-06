@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "output": "scripts/verify",
+  "requiredTokens": ["VERIFY_PREFLIGHT", "VERIFY_STEPS"],
+  "fileMode": "0755"
+}

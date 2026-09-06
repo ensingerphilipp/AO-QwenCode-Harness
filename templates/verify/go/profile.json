@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "go",
+  "description": "Go repositories using the Go toolchain declared by repository evidence.",
+  "detectionSignals": [
+    "go.mod"
+  ],
+  "requiredInspectionFacts": [
+    "GO_VERSION",
+    "GO_PACKAGE_SCOPE",
+    "GO_RACE_REQUIRED"
+  ],
+  "requiredRenderTokens": [
+    "GO_PACKAGE_SCOPE",
+    "GO_TEST_FLAGS",
+    "GO_BUILD_FLAGS",
+    "GO_VERSION"
+  ],
+  "verificationCandidates": [
+    {
+      "id": "format",
+      "includeWhen": "tracked Go source exists",
+      "template": "Require `gofmt -l` to return no tracked Go files."
+    },
+    {
+      "id": "vet",
+      "includeWhen": "`go vet` is part of accepted project verification",
+      "template": "go vet {{GO_PACKAGE_SCOPE}}"
+    },
+    {
+      "id": "test",
+      "includeWhen": "Go tests are part of accepted project verification",
+      "template": "go test {{GO_TEST_FLAGS}} {{GO_PACKAGE_SCOPE}}"
+    },
+    {
+      "id": "build",
+      "includeWhen": "the repository defines buildable Go packages",
+      "template": "go build {{GO_BUILD_FLAGS}} {{GO_PACKAGE_SCOPE}}"
+    }
+  ],
+  "ciSetupCandidates": [
+    {
+      "id": "setup-go",
+      "includeWhen": "GitHub-hosted CI must install the repository Go version",
+      "template": "uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0\nwith:\n  go-version: {{GO_VERSION}}"
+    }
+  ]
+}

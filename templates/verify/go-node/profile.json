@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "go-node",
+  "description": "Composite Go + Node repositories; compose only the independently qualified Go and Node checks.",
+  "detectionSignals": [
+    "go.mod",
+    "package.json"
+  ],
+  "requiredInspectionFacts": [
+    "GO_PROFILE_SELECTION",
+    "NODE_PROFILE_SELECTION",
+    "CHECK_ORDER"
+  ],
+  "requiredRenderTokens": [
+    "COMPOSED_GO_AND_NODE_VERIFICATION_STEPS",
+    "COMPOSED_GO_AND_NODE_CI_SETUP"
+  ],
+  "verificationCandidates": [
+    {
+      "id": "compose",
+      "includeWhen": "both component profiles were independently qualified",
+      "template": "{{COMPOSED_GO_AND_NODE_VERIFICATION_STEPS}}"
+    }
+  ],
+  "ciSetupCandidates": [
+    {
+      "id": "compose-setup",
+      "includeWhen": "both component toolchains are required in CI",
+      "template": "{{COMPOSED_GO_AND_NODE_CI_SETUP}}"
+    }
+  ]
+}
