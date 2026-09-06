@@ -93,15 +93,16 @@ The structure is intentional: host-global deployable assets are separated from p
 6. `.qwen/review-rules.md` exists only for project-specific semantic invariants that cannot be reliably enforced mechanically.
 7. `scripts/verify` is the mandatory stable verification interface for every managed project; its implementation is stack-specific.
 8. CI invokes the same `scripts/verify` entry point so local and CI verification do not drift.
-9. `ao-pr-review` owns review execution, result validity, effort selection and semantic disposition. AO consumes those results and owns lifecycle actions.
-10. Semantic review is enabled by default but may be disabled explicitly for a project. A disabled lifecycle still requires the same exact PR/SHA handoff and deterministic CI qualification; it stops before semantic-review dispatch and creates no semantic-review publication.
-11. Pull-request-based development is the harness baseline for implementation changes intended for integration; read-only or no-change tasks do not invent pull requests.
-12. Project-specific semantic-review risk metadata is additive only and schema-validated through `.qwen/review-config.json`; repositories cannot remove global protected paths or labels. The review Skill reads policy only from the tracked repository `HEAD`, rejects untracked local policy, and fails closed on malformed configuration before semantic inference.
-13. Project lifecycle feature flags belong in `.agent-harness.json`, not in Qwen review-risk configuration. Its schema is host-independent; semantic review defaults to enabled.
-14. Project template sources may contain only tokens declared by `template-manifest.json`. Initialization must fail closed until every required token is resolved from inspected facts or explicit human decisions.
-15. Verification profiles separate inspection facts from render tokens and declare both machine-readably. Profile candidates are selected only when supported by repository evidence; they cannot silently introduce new quality policy.
-16. First-project inspection is read-only and evidence-driven. Its machine result must populate every project-template token or identify an explicit human decision; missing facts are never converted into guessed policy.
-17. Orchestrator worktree refresh is a core lifecycle utility and must derive project/worktree/remote/default-branch state dynamically; it may only fast-forward a clean AO orchestrator linked worktree. Reboot session reconciliation is optional/manual recovery and is not part of baseline startup.
+9. The harness repository itself follows the same rule: root `scripts/verify` is its deterministic authority and `.github/workflows/verify.yml` delegates to it.
+10. `ao-pr-review` owns review execution, result validity, effort selection and semantic disposition. AO consumes those results and owns lifecycle actions.
+11. Semantic review is enabled by default but may be disabled explicitly for a project. A disabled lifecycle still requires the same exact PR/SHA handoff and deterministic CI qualification; it stops before semantic-review dispatch and creates no semantic-review publication.
+12. Pull-request-based development is the harness baseline for implementation changes intended for integration; read-only or no-change tasks do not invent pull requests.
+13. Project-specific semantic-review risk metadata is additive only and schema-validated through `.qwen/review-config.json`; repositories cannot remove global protected paths or labels. The review Skill reads policy only from the tracked repository `HEAD`, rejects untracked local policy, and fails closed on malformed configuration before semantic inference.
+14. Project lifecycle feature flags belong in `.agent-harness.json`, not in Qwen review-risk configuration. Its schema is host-independent; semantic review defaults to enabled.
+15. Project template sources may contain only tokens declared by `template-manifest.json`. Initialization must fail closed until every required token is resolved from inspected facts or explicit human decisions.
+16. Verification profiles separate inspection facts from render tokens and declare both machine-readably. Profile candidates are selected only when supported by repository evidence; they cannot silently introduce new quality policy.
+17. First-project inspection is read-only and evidence-driven. Its machine result must populate every project-template token or identify an explicit human decision; missing facts are never converted into guessed policy.
+18. Orchestrator worktree refresh is a core lifecycle utility and must derive project/worktree/remote/default-branch state dynamically; it may only fast-forward a clean AO orchestrator linked worktree. Reboot session reconciliation is optional/manual recovery and is not part of baseline startup.
 
 ## Deduplication rules
 
