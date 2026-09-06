@@ -1,0 +1,102 @@
+# AO worker rules
+
+These rules apply to AO task workers. Global Qwen rules and repository-local project contracts remain applicable.
+
+## Select exactly one mode
+
+- **Implementation mode** is the default.
+- **Reviewer mode** applies only when the assignment contains `AO_SEMANTIC_REVIEW`.
+- Never combine modes. An implementation worker never reviews its own PR; a reviewer never changes implementation code.
+
+## Implementation mode
+
+1. Implement only the assigned scope and respect project-defined human-in-the-loop boundaries.
+2. Run `bash scripts/verify`. Do not hand off while the required local gate fails.
+3. Commit, push, and create or update the pull request when required by the assignment.
+4. When AO semantic review is enabled, resolve the canonical PR URL and exact 40-character head SHA.
+5. Send `READY_FOR_REVIEW` to the active orchestrator ID supplied by AO; never hard-code a prior session ID.
+
+```text
+READY_FOR_REVIEW
+{
+  "workerSessionId": "<AO_SESSION_ID>",
+  "prNumber": <NUMBER>,
+  "prUrl": "<CANONICAL_URL>",
+  "headSha": "<40_CHARACTER_SHA>",
+  "localVerification": "bash scripts/verify: pass",
+  "summary": "<ONE_SENTENCE>",
+  "repairCycle": 0
+}
+```
+
+After sending the handoff, remain available and stop. The orchestrator owns CI qualification and semantic-review dispatch. Do not invoke `/ao-pr-review`, `/review`, or `qwen review run` yourself.
+
+If no active orchestrator ID is available when semantic review is required, report `REVIEW_HANDOFF_BLOCKED` in the current task and stop.
+
+### Routed fixes
+
+- Act on `CI_FIX_REQUEST` only for an in-scope failure routed by the orchestrator. Apply the narrow repair, run `bash scripts/verify`, push, and send a fresh `READY_FOR_REVIEW` for the new head.
+- Act on `REVIEW_FIX_REQUEST` only for findings the orchestrator explicitly routed as automatically repairable. Independently preserve assigned scope and all project HITL boundaries.
+- Apply all eligible semantic-review fixes together, run `bash scripts/verify`, push, and send `READY_FOR_REREVIEW`.
+
+```text
+READY_FOR_REREVIEW
+{
+  "workerSessionId": "<AO_SESSION_ID>",
+  "prNumber": <NUMBER>,
+  "prUrl": "<CANONICAL_URL>",
+  "previousReviewedSha": "<OLD_SHA>",
+  "headSha": "<NEW_40_CHARACTER_SHA>",
+  "localVerification": "bash scripts/verify: pass",
+  "addressedFindingIds": ["<ID>"],
+  "repairCycle": 1
+}
+```
+
+Never perform a second automatic semantic repair. If a routed request would require scope expansion, a protected project decision, or uncertain judgment, report `NEEDS_HUMAN` instead.
+
+## Reviewer mode
+
+1. Accept exactly one review assignment from the orchestrator containing the canonical PR URL, expected SHA, owning worker ID, and orchestrator ID.
+2. Outside the review Skill, do not edit, format, stage, commit, push, run project commands, repair findings, post to GitHub, merge, or claim the PR.
+3. Invoke exactly:
+
+```text
+/ao-pr-review <CANONICAL_PR_URL> <EXPECTED_40_CHARACTER_SHA> auto
+```
+
+Do not call the helper, `/review`, or `qwen review run` directly. The installed `ao-pr-review` Skill owns effort selection, monitor execution, result validation, and semantic disposition.
+
+4. Treat monitor heartbeats only as liveness. Do not poll, retry, terminate a quiet review, or impose a shorter timeout than the Skill.
+5. After a trusted terminal result, read the exact `result.json` reported by the Skill and send one `SEMANTIC_REVIEW_RESULT` to the assigned orchestrator, copying values without reinterpretation.
+
+```text
+SEMANTIC_REVIEW_RESULT
+{
+  "reviewSessionId": "<AO_SESSION_ID>",
+  "reviewKey": "<RESULT_VALUE>",
+  "attemptId": "<RESULT_VALUE>",
+  "resultJson": "<ABSOLUTE_PATH>",
+  "prNumber": <RESULT_VALUE>,
+  "prUrl": "<RESULT_VALUE>",
+  "expectedHead": "<RESULT_VALUE>",
+  "observedHeadAfter": <RESULT_JSON_VALUE_OR_NULL>,
+  "disposition": "<RESULT_VALUE>",
+  "semanticExitCode": <RESULT_VALUE>,
+  "findingIds": ["<EVERY_FINDING_ID>"]
+}
+```
+
+If the monitor is cancelled, emits a transport error, or produces no trusted `result.json`, send one failure message:
+
+```text
+SEMANTIC_REVIEW_FAILURE
+{
+  "reviewSessionId": "<AO_SESSION_ID>",
+  "prUrl": "<ASSIGNED_CANONICAL_URL>",
+  "expectedHead": "<ASSIGNED_SHA>",
+  "error": "<EXACT_ERROR_TEXT>"
+}
+```
+
+Stop after sending one result or failure. Never route findings, repair, retry, or start another review.
