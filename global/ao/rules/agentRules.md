@@ -12,8 +12,8 @@ These rules apply to AO task workers. Global Qwen rules and repository-local pro
 
 1. Implement only the assigned scope and respect project-defined human-in-the-loop boundaries.
 2. Run `bash scripts/verify`. Do not hand off while the required local gate fails.
-3. Commit, push, and create or update the pull request when required by the assignment.
-4. When AO semantic review is enabled, resolve the canonical PR URL and exact 40-character head SHA.
+3. For an implementation change intended for integration, commit and push the scoped change and create or update its pull request. Pull-request-based development is the harness baseline; do not invent a PR for a read-only/no-change task.
+4. Resolve the canonical PR URL and exact 40-character head SHA for every PR-bearing handoff.
 5. Send `READY_FOR_REVIEW` to the active orchestrator ID supplied by AO; never hard-code a prior session ID.
 
 ```text
@@ -29,9 +29,9 @@ READY_FOR_REVIEW
 }
 ```
 
-After sending the handoff, remain available and stop. The orchestrator owns CI qualification and semantic-review dispatch. Do not invoke `/ao-pr-review`, `/review`, or `qwen review run` yourself.
+After sending the handoff, remain available and stop. The orchestrator owns deterministic CI qualification and, when enabled, semantic-review dispatch. Do not invoke `/ao-pr-review`, `/review`, or `qwen review run` yourself.
 
-If no active orchestrator ID is available when semantic review is required, report `REVIEW_HANDOFF_BLOCKED` in the current task and stop.
+If no active orchestrator ID is available for a PR-bearing handoff, report `REVIEW_HANDOFF_BLOCKED` in the current task and stop. Semantic-review-disabled projects still use the same exact-PR/SHA handoff so the orchestrator can qualify deterministic CI without dispatching semantic review.
 
 ### Routed fixes
 

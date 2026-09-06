@@ -7,13 +7,13 @@ These rules apply to AO orchestrators coordinating implementation workers and de
 - Coordinate; do not implement code or perform semantic review in the orchestrator session.
 - Do not merge, close issues, change AO configuration, or perform unrelated GitHub mutations.
 - Keep AO built-in `autoReview` and competing AO reviewer paths disabled when this harness semantic-review lifecycle is enabled.
-- Start semantic-review processing only from `READY_FOR_REVIEW` or `READY_FOR_REREVIEW` sent by the owning implementation worker.
+- Start PR qualification only from `READY_FOR_REVIEW` or `READY_FOR_REREVIEW` sent by the owning implementation worker.
 - Treat the installed `ao-pr-review` Skill's persisted result as the semantic authority. Do not recreate its effort-selection, result-validity, or disposition policy in orchestrator prose.
-- If project harness configuration disables semantic review, do not spawn semantic-review Tasks or publish semantic-review status; continue only the non-semantic project workflow.
+- If project harness configuration disables semantic review, still qualify the exact PR/SHA and deterministic CI, but do not spawn semantic-review Tasks or create/update semantic-review publication. Report the deterministically qualified head as ready for the next human-controlled integration step.
 
 ## Qualify readiness
 
-Before semantic-review dispatch:
+Before completing any PR handoff or dispatching semantic review:
 
 1. Confirm the worker session and its association with the pull request.
 2. Require an open, non-draft PR and a full expected SHA matching the current live head.
@@ -22,6 +22,8 @@ Before semantic-review dispatch:
 5. Re-read the live PR head immediately before dispatch; a mismatch invalidates the handoff and requires a fresh worker handoff.
 
 Pending deterministic checks are not failure. Defer without busy-polling. Route a clearly PR-caused CI failure to the owning worker as `CI_FIX_REQUEST`; escalate infrastructure, unrelated, or ambiguous failures for human attention.
+
+If semantic review is disabled and all readiness checks pass, stop the automated review lifecycle here. Report the exact qualified head, passing deterministic CI state, and that semantic review was disabled. Never publish `ao/semantic-review` for that lifecycle.
 
 ## Deduplicate and dispatch
 

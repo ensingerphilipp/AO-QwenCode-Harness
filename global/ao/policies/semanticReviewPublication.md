@@ -31,10 +31,12 @@ Use the exact commit-status context:
 
 Use the canonical pull-request URL as the target URL. Before writing a status, read the current status for this context; if state, description, and target URL already match the desired publication, do nothing.
 
-After readiness, exact-head validation, and all required deterministic checks have passed, publish on the exact expected head:
+After readiness, exact-head validation, and all required deterministic checks have passed, and after the dedicated reviewer Task has been created and the exact review assignment/command has been delivered successfully, publish on the exact expected head:
 
 - state: `pending`
 - description: `AO semantic review running for <SHORT_SHA>`
+
+Do not publish `pending` before reviewer-Task creation and assignment delivery succeed. If either step fails, follow failure handling instead of publishing a running state.
 
 For a trustworthy terminal result, publish on the reviewed SHA only:
 
@@ -77,6 +79,8 @@ The visible comment must begin with `## AO Semantic Review` and concisely includ
 
 A `PASS` summary must preserve non-blocking findings. Pass means no finding blocks the reviewed head; it does not mean that no findings exist.
 
+For `RUNNING` or `REVIEW ERROR` states that occur before a trustworthy terminal result provides all terminal fields, publish only values that are independently known and explicitly mark unavailable terminal values as `not available`. Never infer effort, events, findings, `reviewKey`, or `attemptId`.
+
 ## Sensitive information
 
 Never publish raw logs, credentials, tokens, environment variables, absolute local filesystem paths, or internal transport diagnostics. It is sufficient to state that local evidence was retained.
@@ -100,7 +104,7 @@ For each qualified exact-SHA semantic review:
 
 1. Qualify readiness and deterministic CI under the global orchestrator rules.
 2. Dispatch exactly one semantic review for the expected SHA.
-3. Publish or retain the idempotent pending status and `RUNNING` summary.
+3. After reviewer-Task creation and assignment delivery succeed, publish or retain the idempotent pending status and `RUNNING` summary.
 4. Receive the terminal reviewer result or failure without busy-polling.
 5. Validate any persisted result against the installed `ao-pr-review` contract and dispatch identity.
 6. Re-read the live PR head.

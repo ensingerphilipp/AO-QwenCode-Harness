@@ -86,8 +86,9 @@ The structure is intentional: host-global deployable assets are separated from p
 7. `scripts/verify` is the mandatory stable verification interface for every managed project; its implementation is stack-specific.
 8. CI invokes the same `scripts/verify` entry point so local and CI verification do not drift.
 9. `ao-pr-review` owns review execution, result validity, effort selection and semantic disposition. AO consumes those results and owns lifecycle actions.
-10. Semantic review is enabled by default but may be disabled explicitly for a project.
-11. Project-specific semantic-review risk metadata is additive only and schema-validated through `.qwen/review-config.json`; repositories cannot remove global protected paths or labels. The review Skill reads policy only from the tracked repository `HEAD`, rejects untracked local policy, and fails closed on malformed configuration before semantic inference.
+10. Semantic review is enabled by default but may be disabled explicitly for a project. A disabled lifecycle still requires the same exact PR/SHA handoff and deterministic CI qualification; it stops before semantic-review dispatch and creates no semantic-review publication.
+11. Pull-request-based development is the harness baseline for implementation changes intended for integration; read-only or no-change tasks do not invent pull requests.
+12. Project-specific semantic-review risk metadata is additive only and schema-validated through `.qwen/review-config.json`; repositories cannot remove global protected paths or labels. The review Skill reads policy only from the tracked repository `HEAD`, rejects untracked local policy, and fails closed on malformed configuration before semantic inference.
 
 ## Deduplication rules
 
