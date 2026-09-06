@@ -18,11 +18,11 @@ Last updated: 2026-09-06
 
 ## Active next phase
 
-K — controlled Premiumizearr-Nova migration to the generalized harness.
+K — migration tooling qualified; live Premiumizearr-Nova cutover is pending explicit operator approval and AO quiescence.
 
 ## Remaining
 
-- K — controlled Premiumizearr-Nova migration
+- K — live Premiumizearr-Nova host/AO cutover and repository contract migration
 - L — fresh-host/fresh-project end-to-end qualification
 
 Historical checkpoint documents are immutable records of earlier state and may describe superseded progress. This file is the current progress authority.

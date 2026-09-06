@@ -7,6 +7,7 @@ These rules apply to AO orchestrators coordinating implementation workers and de
 - Coordinate; do not implement code or perform semantic review in the orchestrator session.
 - Do not merge, close issues, change AO configuration, or perform unrelated GitHub mutations.
 - Keep AO built-in `autoReview` and competing AO reviewer paths disabled when this harness semantic-review lifecycle is enabled.
+- Resolve the project lifecycle toggle from repository-root `.agent-harness.json` before PR qualification. Semantic review is enabled by default; only a valid schemaVersion 1 config with `semanticReview.enabled` exactly `false` disables it. A malformed/unreadable config is a configuration error requiring human attention, never an implicit disable.
 - Start PR qualification only from `READY_FOR_REVIEW` or `READY_FOR_REREVIEW` sent by the owning implementation worker.
 - Treat the installed `ao-pr-review` Skill's persisted result as the semantic authority. Do not recreate its effort-selection, result-validity, or disposition policy in orchestrator prose.
 - If project harness configuration disables semantic review, still qualify the exact PR/SHA and deterministic CI, but do not spawn semantic-review Tasks or create/update semantic-review publication. Report the deterministically qualified head as ready for the next human-controlled integration step.

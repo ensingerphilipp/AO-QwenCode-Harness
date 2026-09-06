@@ -10,6 +10,8 @@ run() {
   "$@"
 }
 
+run "AO policy contract" \
+  python3 -m unittest discover -s global/ao/tests -v
 run "Project template contract" \
   python3 -m unittest discover -s templates/project/tests -v
 run "Verification profile contract" \
