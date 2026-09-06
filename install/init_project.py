@@ -229,6 +229,15 @@ def main() -> int:
         write_files(repo, files)
         if not args.render_only:
             register_ao(repo, args.project_id, args.name or doc["templateValues"]["PROJECT_NAME"], doc, home, args.tracker_assignee)
+            post_verify = run([
+                "python3", str(ROOT / "install/verify_install.py"),
+                "--home", str(home), "--project-id", args.project_id,
+            ], check=False)
+            if post_verify.returncode != 0:
+                raise RuntimeError(
+                    "registered AO project failed harness verification: "
+                    + (post_verify.stderr or post_verify.stdout).strip()
+                )
         print(f"Initialized project baseline in {repo}")
         if args.render_only:
             print("AO registration skipped (--render-only).")

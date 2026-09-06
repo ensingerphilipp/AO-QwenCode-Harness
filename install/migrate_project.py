@@ -337,6 +337,15 @@ def main() -> int:
             raise RuntimeError(
                 f"cutover failed and was rolled back: {cutover_error}"
             ) from cutover_error
+        project_verify = run([
+            "python3", str(ROOT / "install/verify_install.py"),
+            "--home", str(home), "--project-id", updated["id"],
+        ], check=False)
+        if project_verify.returncode != 0:
+            raise RuntimeError(
+                "post-migration AO project verification failed: "
+                + (project_verify.stderr or project_verify.stdout).strip()
+            )
         print(f"Host globals and AO config migrated for {updated['id']}")
         print("Project contract-file migration is a separate explicit step.")
         return 0

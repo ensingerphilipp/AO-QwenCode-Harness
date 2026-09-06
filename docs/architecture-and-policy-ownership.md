@@ -111,6 +111,7 @@ The structure is intentional: host-global deployable assets are separated from p
 25. AO orchestrators resolve semantic-review enablement from repository-root `.agent-harness.json`: enabled is the default, only an explicit valid `false` disables it, and malformed/unreadable lifecycle configuration fails closed to human attention.
 26. Existing-project migration is transactional at the host/AO layer: it requires global AO quiescence, snapshots the complete prior AO config plus host deployment state, preserves unknown/project-specific config keys, and automatically rolls back host files, installer state, and AO config if cutover fails.
 27. Existing-project repository contracts are never rewritten by host migration. Contract deduplication occurs in a normal project branch/PR after host/AO cutover, preserving repository ownership and reviewability.
+28. Deployment verification may be project-aware: when a project ID is supplied, it must assert the exact short AO rule-loader strings, Qwen worker/orchestrator selection, and refresh hook after registration or migration.
 
 ## Deduplication rules
 

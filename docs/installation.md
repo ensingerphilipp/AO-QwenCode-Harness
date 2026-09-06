@@ -49,6 +49,8 @@ Initialization renders the production project contracts, review-risk config, lif
 
 After rendering, the script registers the new project with `ao project add` and configures Qwen workers/orchestrator, short global-rule loaders, the inferred/inspected default branch, and the orchestrator refresh post-create hook through `ao project set-config`.
 
+After registration, initialization runs project-aware installation verification. The reusable command is `bash install/verify-install.sh --project-id <id>`; it asserts the exact short `agentRules`/`orchestratorRules` loaders, Qwen worker/orchestrator selection, and refresh hook stored by AO.
+
 If AO configuration fails after a new registration is created, the initializer removes that newly created registration instead of leaving a partially configured AO project.
 
 ## Verification and ownership

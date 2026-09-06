@@ -35,10 +35,37 @@ def expected_files() -> dict[Path, Path]:
     return result
 
 
+
+
+def project_config_failures(config: dict, home: Path) -> list[str]:
+    failures = []
+    expected_agent = (
+        f"Before any task action, read and follow the file at "
+        f"`{home / '.ao/rules/agentRules.md'}`."
+    )
+    expected_orchestrator = (
+        f"Before any coordination action, read and follow the file at "
+        f"`{home / '.ao/rules/orchestratorRules.md'}`."
+    )
+    expected_refresh = f"python3 {home / '.local/bin/ao-refresh-orchestrator'} run"
+    if config.get("agentRules") != expected_agent:
+        failures.append("AO project agentRules loader does not match harness invariant")
+    if config.get("orchestratorRules") != expected_orchestrator:
+        failures.append("AO project orchestratorRules loader does not match harness invariant")
+    if (config.get("worker") or {}).get("agent") != "qwen":
+        failures.append("AO project worker.agent is not qwen")
+    if (config.get("orchestrator") or {}).get("agent") != "qwen":
+        failures.append("AO project orchestrator.agent is not qwen")
+    post_create = config.get("postCreate")
+    if not isinstance(post_create, list) or expected_refresh not in post_create:
+        failures.append("AO project postCreate lacks the harness refresh hook")
+    return failures
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify a host-global AO + Qwen Code harness installation.")
     parser.add_argument("--home", type=Path, default=Path.home())
     parser.add_argument("--skip-runtime-checks", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--project-id", help="Also verify one registered AO project against harness-owned config invariants")
     args = parser.parse_args()
     home = args.home.expanduser().resolve()
     failures = []
@@ -71,6 +98,26 @@ def main() -> int:
             for flag in ("--required", "--json"):
                 if flag not in gh.stdout:
                     failures.append(f"GitHub CLI pr checks lacks {flag}")
+
+            if args.project_id:
+                project_get = subprocess.run(
+                    ["ao", "project", "get", args.project_id, "--json"],
+                    text=True, capture_output=True, timeout=15,
+                )
+                if project_get.returncode != 0:
+                    failures.append(
+                        f"cannot read AO project {args.project_id}: "
+                        + (project_get.stderr or project_get.stdout).strip()
+                    )
+                else:
+                    try:
+                        project = json.loads(project_get.stdout).get("project")
+                        config = project.get("config") if isinstance(project, dict) else None
+                        if not isinstance(config, dict):
+                            raise ValueError("missing project.config")
+                        failures.extend(project_config_failures(config, home))
+                    except (json.JSONDecodeError, ValueError, AttributeError) as exc:
+                        failures.append(f"malformed AO project JSON for {args.project_id}: {exc}")
 
     if failures:
         print("verify-install: FAILED", file=sys.stderr)
