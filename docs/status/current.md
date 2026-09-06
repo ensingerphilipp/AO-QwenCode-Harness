@@ -14,14 +14,14 @@ Last updated: 2026-09-06
 - H — evidence-driven project inspection contract
 - I — generalized orchestrator worktree refresh
 - Gap closure — harness repository self-verification and CI
+- J — host-independent installation and new-project registration
 
 ## Active next phase
 
-J — host-independent installation and project registration support.
+K — controlled Premiumizearr-Nova migration to the generalized harness.
 
 ## Remaining
 
-- J — host-independent installation
 - K — controlled Premiumizearr-Nova migration
 - L — fresh-host/fresh-project end-to-end qualification
 

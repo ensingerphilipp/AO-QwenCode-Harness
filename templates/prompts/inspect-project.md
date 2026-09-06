@@ -33,6 +33,8 @@ If existing verification is incomplete or ambiguous, record the missing policy a
 
 Populate every token required by `templates/project/template-manifest.json`. Use concise project-specific text suitable for direct rendering into the production project files.
 
+For CI rendering: `CI_RUNNER` is one GitHub Actions runner label, `CI_TIMEOUT_MINUTES` is a decimal integer from 1 through 999 encoded as a string, and `CI_SETUP_STEPS` is either an empty string when no setup step is required or a complete GitHub Actions `steps` YAML fragment already indented six spaces for direct insertion.
+
 When a token cannot be established from repository evidence without making a policy decision, set that token value to `null` and add a corresponding `decisionsRequired` entry. Do not use `TBD`, guesses, generic filler, or invented policy.
 
 For an observed absence, use a positive statement only when evidence supports it (for example, “No persistent database or migration system is present in the inspected repository”). Do not confuse “not found” with “does not exist” when inspection is incomplete.

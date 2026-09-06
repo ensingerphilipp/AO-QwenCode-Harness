@@ -68,7 +68,6 @@ AO-QwenCode-Harness/
 │   │       └── semanticReviewPublication.md
 │   └── qwen/
 │       ├── QWEN.md
-│       ├── settings.template.json
 │       └── skills/
 │           └── ao-pr-review/
 ├── templates/
@@ -103,6 +102,12 @@ The structure is intentional: host-global deployable assets are separated from p
 16. Verification profiles separate inspection facts from render tokens and declare both machine-readably. Profile candidates are selected only when supported by repository evidence; they cannot silently introduce new quality policy.
 17. First-project inspection is read-only and evidence-driven. Its machine result must populate every project-template token or identify an explicit human decision; missing facts are never converted into guessed policy.
 18. Orchestrator worktree refresh is a core lifecycle utility and must derive project/worktree/remote/default-branch state dynamically; it may only fast-forward a clean AO orchestrator linked worktree. Reboot session reconciliation is optional/manual recovery and is not part of baseline startup.
+19. Qwen model/provider/auth settings are host infrastructure, not harness policy. Host installation verifies Qwen availability but never overwrites `~/.qwen/settings.json` or copies credentials.
+20. New AO project registration uses the supported `ao project add` and `ao project set-config` CLI surfaces. Existing registered projects are migration territory and are never silently replaced by project initialization.
+21. Host-global installation is manifest-tracked and idempotent: unmanaged/local target conflicts fail closed unless the operator explicitly requests replacement, in which case originals are backed up first.
+22. `templateValues.CI_SETUP_STEPS` is the single inspection/rendering authority for project CI setup. The verification proposal contains executable local checks only; CI setup is not duplicated in a second inspection field.
+23. Fresh-project initialization validates inspection structure with stdlib checks, refuses unresolved decisions or conflicting repository contracts, renders before AO registration, verifies the host-global install before registration, and rolls back a newly created AO registration if configuration fails.
+24. Installer compatibility is capability-based where possible: AO `project set-config`, Qwen `review run`, and GitHub CLI `pr checks` required flag surfaces are probed instead of relying only on version strings.
 
 ## Deduplication rules
 

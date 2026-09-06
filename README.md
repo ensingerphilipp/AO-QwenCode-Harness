@@ -34,4 +34,4 @@ The gate is fail-fast and non-repairing. It runs all harness contract, integrati
 
 Do not copy runtime state, secrets, AO databases, worktrees, Qwen sessions, caches, or generated review evidence into deployments. Active deployment artifacts live under `global/`, `templates/`, `lifecycle/`, `config/`, and `install/` as documented by the architecture record.
 
-Installation and project-initialization commands will be documented as their production implementations land in the remaining phases.
+Production installation and new-project initialization are documented in `docs/installation.md`. Existing-project migration and fresh-environment end-to-end qualification remain separate controlled phases.

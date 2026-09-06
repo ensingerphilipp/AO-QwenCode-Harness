@@ -18,6 +18,8 @@ run "Project inspection contract" \
   python3 -m unittest discover -s templates/inspection/tests -v
 run "Lifecycle refresh integration tests" \
   python3 -m unittest discover -s lifecycle/tests -v
+run "Host install and project initialization tests" \
+  python3 -m unittest discover -s install/tests -v
 run "Semantic review Skill regression suite" \
   python3 -m unittest discover -s global/qwen/skills/ao-pr-review/tests -v
 
@@ -33,6 +35,7 @@ PY
 
 run "No tracked Python caches" bash -c \
   '! git ls-files | grep -E "(^|/)(__pycache__/|.*\\.py[co]$)"'
-run "Git whitespace check" git diff --check --cached
+run "Git whitespace check (unstaged)" git diff --check
+run "Git whitespace check (staged)" git diff --cached --check
 
 printf '\nHarness verification passed.\n'
