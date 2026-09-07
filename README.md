@@ -4,7 +4,7 @@ Production-oriented reusable baseline for Agent Orchestrator (AO) with Qwen Code
 
 ## Current status
 
-The global policy layers, generalized `ao-pr-review` Skill, project templates, verification profiles, evidence-driven project inspection contract, and orchestrator worktree refresh utility are implemented and regression-tested. Host-independent installation, migration tooling, and fresh-environment end-to-end qualification remain the active implementation phases.
+The global policy layers, generalized `ao-pr-review` Skill, project templates, verification profiles, evidence-driven project inspection contract, and orchestrator worktree refresh utility are implemented and regression-tested. Host-independent installation and the Premiumizearr-Nova migration and smoke qualification are complete. Fresh-host/fresh-project end-to-end qualification remains deferred. See [current implementation status](docs/status/current.md).
 
 The repository is intentionally private while the harness is being qualified for broader reuse.
 
@@ -34,4 +34,4 @@ The gate is fail-fast and non-repairing. It runs all harness contract, integrati
 
 Do not copy runtime state, secrets, AO databases, worktrees, Qwen sessions, caches, or generated review evidence into deployments. Active deployment artifacts live under `global/`, `templates/`, `lifecycle/`, `config/`, and `install/` as documented by the architecture record.
 
-Production installation and new-project initialization are documented in `docs/installation.md`. Existing-project migration and fresh-environment end-to-end qualification remain separate controlled phases.
+Production installation and new-project initialization are documented in `docs/installation.md`. Existing-project migration is a controlled deployment step; fresh-environment end-to-end qualification remains deferred.
