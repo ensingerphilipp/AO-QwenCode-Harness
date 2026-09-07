@@ -7,8 +7,9 @@ This policy governs only publication of the harness semantic-review lifecycle to
 ## Ownership and authorization
 
 - `ao-pr-review` is strictly non-posting and must not mutate GitHub.
-- The AO orchestrator alone owns the publications authorized by this policy.
-- The only authorized mutations are:
+- The AO orchestrator alone owns the normal automated publications authorized by this policy.
+- The sole harness-owned exception is an explicit human invocation of the model-hidden `ao-semantic-review-override` Skill. That administrative override may set only `ao/semantic-review=success` on the exact current PR head after its independent fail-closed preconditions pass. It does not represent or modify a semantic disposition, does not update the AO summary comment, and is never an orchestrator/model fallback path.
+- The normal lifecycle mutations authorized by this policy are:
   1. commit status context `ao/semantic-review`; and
   2. one AO-owned pull-request summary comment.
 - This policy does not authorize code changes, commits, branches, pull-request reviews or approvals, change requests, inline comments, labels, issue changes, or merges.

@@ -20,8 +20,8 @@ FILE_MAP = {
     ROOT / "global/ao/policies/semanticReviewPublication.md": Path(".ao/policies/semanticReviewPublication.md"),
     ROOT / "lifecycle/ao-refresh-orchestrator": Path(".local/bin/ao-refresh-orchestrator"),
 }
-SKILL_SOURCE = ROOT / "global/qwen/skills/ao-pr-review"
-SKILL_TARGET = Path(".qwen/skills/ao-pr-review")
+SKILLS_SOURCE_ROOT = ROOT / "global/qwen/skills"
+SKILLS_TARGET_ROOT = Path(".qwen/skills")
 REQUIRED_COMMANDS = ("git", "gh", "ao", "qwen", "python3")
 
 
@@ -66,10 +66,11 @@ def check_commands(skip: bool) -> dict[str, str]:
 
 def managed_sources() -> dict[Path, Path]:
     result = dict(FILE_MAP)
-    for source in sorted(SKILL_SOURCE.rglob("*")):
-        if source.is_file() and "__pycache__" not in source.parts and source.suffix not in {".pyc", ".pyo"}:
-            rel = source.relative_to(SKILL_SOURCE)
-            result[source] = SKILL_TARGET / rel
+    for skill_dir in sorted(path for path in SKILLS_SOURCE_ROOT.iterdir() if path.is_dir()):
+        for source in sorted(skill_dir.rglob("*")):
+            if source.is_file() and "__pycache__" not in source.parts and source.suffix not in {".pyc", ".pyo"}:
+                rel = source.relative_to(skill_dir)
+                result[source] = SKILLS_TARGET_ROOT / skill_dir.name / rel
     return result
 
 

@@ -16,6 +16,7 @@ Last updated: 2026-09-07
 - Gap closure — harness repository self-verification and CI
 - J — host-independent installation and new-project registration
 - K — Premiumizearr-Nova migration, installed runtime verification, and accepted tracker-intake smoke qualification
+- Operator escape hatch — model-hidden manual `ao/semantic-review` status override packaged and managed as a host-global Skill
 
 ## Latest qualification
 
