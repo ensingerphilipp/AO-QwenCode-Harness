@@ -52,6 +52,10 @@ class InstallHostTests(unittest.TestCase):
         )
         self.assertIn(".qwen/QWEN.md", manifest["files"])
         self.assertIn(".qwen/skills/ao-pr-review/SKILL.md", manifest["files"])
+        self.assertIn(
+            ".qwen/skills/ao-semantic-review-override/SKILL.md",
+            manifest["files"],
+        )
 
     def test_unmanaged_collision_refused_and_replace_backed_up(self):
         target = self.home / ".qwen/QWEN.md"

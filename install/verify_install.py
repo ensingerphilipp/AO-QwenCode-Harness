@@ -18,7 +18,7 @@ EXPECTED = {
     Path(".ao/policies/semanticReviewPublication.md"): ROOT / "global/ao/policies/semanticReviewPublication.md",
     Path(".local/bin/ao-refresh-orchestrator"): ROOT / "lifecycle/ao-refresh-orchestrator",
 }
-SKILL = ROOT / "global/qwen/skills/ao-pr-review"
+SKILLS_ROOT = ROOT / "global/qwen/skills"
 
 
 def sha(path: Path) -> str:
@@ -29,9 +29,10 @@ def sha(path: Path) -> str:
 
 def expected_files() -> dict[Path, Path]:
     result = dict(EXPECTED)
-    for source in SKILL.rglob("*"):
-        if source.is_file() and "__pycache__" not in source.parts and source.suffix not in {".pyc", ".pyo"}:
-            result[Path(".qwen/skills/ao-pr-review") / source.relative_to(SKILL)] = source
+    for skill_dir in sorted(path for path in SKILLS_ROOT.iterdir() if path.is_dir()):
+        for source in skill_dir.rglob("*"):
+            if source.is_file() and "__pycache__" not in source.parts and source.suffix not in {".pyc", ".pyo"}:
+                result[Path(".qwen/skills") / skill_dir.name / source.relative_to(skill_dir)] = source
     return result
 
 
@@ -82,10 +83,14 @@ def main() -> int:
             if not shutil.which(command):
                 failures.append(f"required command missing: {command}")
         if not failures:
-            helper = home / ".qwen/skills/ao-pr-review/scripts/run_explicit_review.py"
-            proc = subprocess.run(["python3", str(helper), "help"], text=True, capture_output=True, timeout=15)
-            if proc.returncode != 0:
-                failures.append(f"ao-pr-review help failed: {(proc.stderr or proc.stdout).strip()}")
+            helpers = {
+                "ao-pr-review": home / ".qwen/skills/ao-pr-review/scripts/run_explicit_review.py",
+                "ao-semantic-review-override": home / ".qwen/skills/ao-semantic-review-override/scripts/override_status.py",
+            }
+            for name, helper in helpers.items():
+                proc = subprocess.run(["python3", str(helper), "help"], text=True, capture_output=True, timeout=15)
+                if proc.returncode != 0:
+                    failures.append(f"{name} help failed: {(proc.stderr or proc.stdout).strip()}")
             ao = subprocess.run(["ao", "project", "set-config", "--help"], text=True, capture_output=True, timeout=15)
             for flag in ("--config-json", "--agent-rules", "--orchestrator-rules", "--post-create"):
                 if flag not in ao.stdout:

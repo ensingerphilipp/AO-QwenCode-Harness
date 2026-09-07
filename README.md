@@ -14,6 +14,7 @@ The repository is intentionally private while the harness is being qualified for
 - `global/ao/rules/` — AO worker/reviewer and orchestrator lifecycle rules.
 - `global/ao/policies/semanticReviewPublication.md` — GitHub semantic-review publication policy.
 - `global/qwen/skills/ao-pr-review/` — exact-SHA semantic review engine and contract.
+- `global/qwen/skills/ao-semantic-review-override/` — human-only administrative override for the required semantic-review status.
 - `templates/project/` — production project-bootstrap template sources.
 - `templates/verify/` — evidence-driven deterministic verification profiles.
 - `templates/prompts/inspect-project.md` — read-only project-inspection contract.

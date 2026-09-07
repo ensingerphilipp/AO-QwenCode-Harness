@@ -24,6 +24,7 @@ Update this document in the same commit whenever an architectural assumption, ow
 | Global AO worker | Worker/reviewer lifecycle, handoffs, routed repair behavior | Semantic disposition definitions or project architecture |
 | Global AO orchestrator | Coordination, readiness, dispatch, routing, publication authorization | Product implementation or semantic-review policy internals |
 | Global review Skill | Review execution contract, effort policy, semantic disposition | AO lifecycle routing or GitHub publication |
+| Global operator Skill | Explicit human-only administrative escape hatches | Autonomous/model invocation or normal lifecycle ownership |
 | Project contract | Goals, scope, HITL, public contracts, architecture, project invariants | Generic host-wide behavior |
 | Deterministic verification | Exact mechanical checks | Semantic policy or product decisions |
 | Runtime state | Sessions, worktrees, evidence, caches | Canonical configuration or source policy |
@@ -39,6 +40,7 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `global/qwen/skills/ao-pr-review/references/contract.md` | Global review Skill | Technical review/result contract |
 | `global/qwen/skills/ao-pr-review/references/policy.md` | Global review Skill | Effort selection and semantic disposition |
 | `global/qwen/skills/ao-pr-review/SKILL.md` | Global review Skill | Qwen execution procedure |
+| `global/qwen/skills/ao-semantic-review-override/` | Global operator Skill | Human-only administrative override of the `ao/semantic-review` required status |
 | `templates/project/PROJECT.md` | Project baseline | Product scope, HITL and public-contract template |
 | `templates/project/ARCHITECTURE.md` | Project baseline | Architecture and technical-decision template |
 | `templates/project/QWEN.md` | Project baseline | Thin repository-local Qwen entry point |
@@ -69,7 +71,8 @@ AO-QwenCode-Harness/
 │   └── qwen/
 │       ├── QWEN.md
 │       └── skills/
-│           └── ao-pr-review/
+│           ├── ao-pr-review/
+│           └── ao-semantic-review-override/
 ├── templates/
 │   ├── project/
 │   ├── verify/
@@ -113,6 +116,7 @@ The structure is intentional: host-global deployable assets are separated from p
 27. Existing-project repository contracts are never rewritten by host migration. Contract deduplication occurs in a normal project branch/PR after host/AO cutover, preserving repository ownership and reviewability.
 28. Deployment verification may be project-aware: when a project ID is supplied, it must assert the exact short AO rule-loader strings, Qwen worker/orchestrator selection, and refresh hook after registration or migration.
 29. AO Qwen startup may create an untracked repository-root `.qwen/settings.json` containing AO hook wiring before the orchestrator refresh hook runs. The refresh helper treats exactly that untracked path as runtime state, but continues to fail closed on every other tracked modification or untracked path; Git itself remains responsible for refusing an upstream fast-forward that would overwrite the runtime file.
+30. `ao-semantic-review-override` is the sole harness-owned manual administrative exception for setting `ao/semantic-review=success` without a semantic PASS result. Qwen must enforce `disable-model-invocation: true`; the operator must invoke it explicitly, supply a reason, and the helper must independently require an open non-draft exact head, semantic review enabled on that tracked head, all other required deterministic checks passing, and an unchanged head immediately before publication. It never updates the AO summary comment and does not alter semantic-review evidence or disposition.
 
 ## Deduplication rules
 
