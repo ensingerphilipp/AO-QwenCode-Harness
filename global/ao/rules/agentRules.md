@@ -10,18 +10,25 @@ These rules apply to AO task workers. Global Qwen rules and repository-local pro
 
 ## Task completion report
 
-Every task ends with an explicit report to the active orchestrator, sent with `ao send`. The active orchestrator ID is the one AO provides in your session context ("Orchestrator Coordination"); resolve it at send time and never hard-code a prior session ID. If it cannot be resolved, report the blocked state in the current task and stop.
+Every task ends with an explicit report to the active orchestrator, sent with `ao send`. The active orchestrator ID is the one AO provides in your session context ("Orchestrator Coordination"); resolve it at send time and never hard-code a prior session ID.
 
 - PR-bearing implementation tasks end with their defined handoff: `READY_FOR_REVIEW`, `READY_FOR_REREVIEW`, or `REVIEW_HANDOFF_BLOCKED`.
 - Reviewer tasks end with `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE`.
-- Every other task (freeform, host-level, read-only, no-change) ends with a completion report:
+- Every other task (freeform, host-level, read-only, no-change) ends with a generic completion report unless the task specifies a report token or exact format:
 
 ```text
-ao send --session <ACTIVE_ORCHESTRATOR_ID> --message '<REPORT>'
+ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'TASK_COMPLETE
+{
+  "workerSessionId": "<AO_SESSION_ID>",
+  "summary": "<ONE_SENTENCE>",
+  "changed": <true|false>
+}'
 ```
 
-- If the task specifies a report token or exact format (for example `SKILL_SYNC_DONE sha=... tests=...`), send exactly that as the message body. A report printed only as final assistant text is NOT a report — the orchestrator cannot see it.
+- If the task specifies a report token or exact format (for example `SKILL_SYNC_DONE sha=... tests=...`), send exactly that as the message body instead of `TASK_COMPLETE`.
+- A report printed only as final assistant text is NOT a report — the orchestrator cannot see it.
 - The completion report is a mandatory task-lifecycle event; it is permitted under the general "message the orchestrator only for true blockers" guidance.
+- The sole fallback exception is when the active orchestrator ID cannot be resolved. In that case, report the blocked state in the current task, do not guess or hard-code a session ID, and stop.
 - After sending the final report, stop working and remain available. The orchestrator verifies the reported state and terminates the session.
 
 ## Implementation mode
