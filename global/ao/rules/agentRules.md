@@ -8,6 +8,22 @@ These rules apply to AO task workers. Global Qwen rules and repository-local pro
 - **Reviewer mode** applies only when the assignment contains `AO_SEMANTIC_REVIEW`.
 - Never combine modes. An implementation worker never reviews its own PR; a reviewer never changes implementation code.
 
+## Task completion report
+
+Every task ends with an explicit report to the active orchestrator, sent with `ao send`. The active orchestrator ID is the one AO provides in your session context ("Orchestrator Coordination"); resolve it at send time and never hard-code a prior session ID. If it cannot be resolved, report the blocked state in the current task and stop.
+
+- PR-bearing implementation tasks end with their defined handoff: `READY_FOR_REVIEW`, `READY_FOR_REREVIEW`, or `REVIEW_HANDOFF_BLOCKED`.
+- Reviewer tasks end with `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE`.
+- Every other task (freeform, host-level, read-only, no-change) ends with a completion report:
+
+```text
+ao send --session <ACTIVE_ORCHESTRATOR_ID> --message '<REPORT>'
+```
+
+- If the task specifies a report token or exact format (for example `SKILL_SYNC_DONE sha=... tests=...`), send exactly that as the message body. A report printed only as final assistant text is NOT a report — the orchestrator cannot see it.
+- The completion report is a mandatory task-lifecycle event; it is permitted under the general "message the orchestrator only for true blockers" guidance.
+- After sending the final report, stop working and remain available. The orchestrator verifies the reported state and terminates the session.
+
 ## Implementation mode
 
 1. Implement only the assigned scope and respect project-defined human-in-the-loop boundaries.
