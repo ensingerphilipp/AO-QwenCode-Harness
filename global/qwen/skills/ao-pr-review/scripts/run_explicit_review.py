@@ -1383,7 +1383,6 @@ class ReviewProgress:
         self._transcript = None
         self._offset = 0
         self._agent_calls = set()
-        self._agent_results = set()
         self._last_activity = None
 
     def _bind_once(self):
@@ -1429,13 +1428,57 @@ class ReviewProgress:
                 call_id = call.get("id")
                 if isinstance(call_id, str) and call_id:
                     self._agent_calls.add(call_id)
-        elif record.get("type") == "tool_result":
-            result = record.get("toolCallResult")
-            if not isinstance(result, dict):
-                return
-            call_id = result.get("callId")
-            if isinstance(call_id, str) and call_id in self._agent_calls:
-                self._agent_results.add(call_id)
+
+    def _subagent_dir(self):
+        if self._transcript is None:
+            return None
+        project_dir = self._transcript.parent.parent
+        return project_dir / "subagents" / self._transcript.stem
+
+    @staticmethod
+    def _journal_is_complete(path):
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return False, None
+        last = None
+        for raw in reversed(data.splitlines()):
+            if not raw.strip():
+                continue
+            try:
+                last = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            break
+        if not isinstance(last, dict):
+            return False, None
+        timestamp = last.get("timestamp") if isinstance(last.get("timestamp"), str) else None
+        if last.get("type") != "assistant":
+            return False, timestamp
+        message = last.get("message")
+        if not isinstance(message, dict):
+            return False, timestamp
+        for part in message.get("parts", []):
+            if isinstance(part, dict) and isinstance(part.get("functionCall"), dict):
+                return False, timestamp
+        return True, timestamp
+
+    def _subagent_progress(self):
+        directory = self._subagent_dir()
+        if directory is None:
+            return 0
+        try:
+            journals = list(directory.glob("agent-review-agent-*.jsonl"))
+        except OSError:
+            return 0
+        completed = 0
+        for journal in journals:
+            done, timestamp = self._journal_is_complete(journal)
+            if timestamp is not None and (self._last_activity is None or timestamp > self._last_activity):
+                self._last_activity = timestamp
+            if done:
+                completed += 1
+        return min(completed, len(self._agent_calls))
 
     def snapshot(self):
         try:
@@ -1458,7 +1501,7 @@ class ReviewProgress:
         except (OSError, ValueError):
             return None
         started = len(self._agent_calls)
-        completed = len(self._agent_results)
+        completed = self._subagent_progress()
         if started == 0:
             stage = "preparing"
         elif completed < started:

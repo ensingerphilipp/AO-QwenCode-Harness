@@ -2695,7 +2695,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.2")
+        self.assertEqual(version, "0.3.3")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3741,7 +3741,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.2", readme)
+        self.assertIn("VERSION=0.3.3", readme)
         self.assertIn("contractVersion=6", readme)
 
 
@@ -4026,7 +4026,17 @@ class TestReviewProgress(unittest.TestCase):
             "message": {"role": "user", "parts": [{"text": "review"}]},
         }
 
-    def test_unique_candidate_binds_and_counts_agents_incrementally(self):
+    def write_subagent(self, session_id, agent_id, records):
+        directory = self.chats.parent / "subagents" / session_id
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"agent-review-agent-{agent_id}.jsonl"
+        path.write_text(
+            "".join(json.dumps(record) + "\n" for record in records),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_unique_candidate_counts_completion_from_subagent_journal(self):
         started = time.time() - 1
         sid = "inner-session"
         path = self.write_chat(sid, [self.user_record(sid)])
@@ -4044,15 +4054,35 @@ class TestReviewProgress(unittest.TestCase):
         self.assertEqual(second["stage"], "finder_fanout")
         self.assertEqual(second["agentsStarted"], 1)
         self.assertEqual(second["agentsCompleted"], 0)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps({
-                "type": "tool_result", "timestamp": "2026-09-13T10:02:00Z",
-                "toolCallResult": {"callId": "a1", "status": "success"},
-            }) + "\n")
+        self.write_subagent(sid, "one", [{
+            "type": "assistant", "timestamp": "2026-09-13T10:02:00Z",
+            "message": {"parts": [{"text": "final report"}]},
+        }])
         third = progress.snapshot()
         self.assertEqual(third["stage"], "post_fanout")
         self.assertEqual(third["agentsCompleted"], 1)
         self.assertEqual(third["lastActivityAt"], "2026-09-13T10:02:00Z")
+
+    def test_subagent_journal_with_pending_function_call_is_not_complete(self):
+        started = time.time() - 1
+        sid = "inner-active"
+        path = self.write_chat(sid, [self.user_record(sid), {
+            "type": "assistant", "timestamp": "2026-09-13T10:01:00Z",
+            "message": {"parts": [{"functionCall": {
+                "id": "a1", "name": "agent", "args": {}
+            }}]},
+        }])
+        self.write_subagent(sid, "active", [{
+            "type": "assistant", "timestamp": "2026-09-13T10:02:00Z",
+            "message": {"parts": [{"functionCall": {
+                "id": "tool1", "name": "read_file", "args": {}
+            }}]},
+        }])
+        progress = self.module.ReviewProgress(self.worktree, started, self.outer)
+        snap = progress.snapshot()
+        self.assertEqual(snap["agentsStarted"], 1)
+        self.assertEqual(snap["agentsCompleted"], 0)
+        self.assertEqual(snap["stage"], "finder_fanout")
 
     def test_zero_or_ambiguous_candidates_do_not_bind(self):
         started = time.time() - 1
