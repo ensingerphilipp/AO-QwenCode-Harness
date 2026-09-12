@@ -3992,21 +3992,146 @@ class TestMonitorEnvelopeExits(HelperBase):
             )
 
 
+class TestReviewProgress(unittest.TestCase):
+    def setUp(self):
+        self.module = load_helper_module()
+        self.tmp = tempfile.TemporaryDirectory(prefix="aopr-progress-")
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name)
+        self.worktree = self.home / "worktree"
+        self.worktree.mkdir()
+        self.outer = "outer-session"
+        self.chats = self.home / ".qwen/projects/project/chats"
+        self.chats.mkdir(parents=True)
+        self.outer_path = self.chats / f"{self.outer}.jsonl"
+        self.outer_path.write_text("{}\n", encoding="utf-8")
+        self.home_patch = mock.patch.dict(os.environ, {"HOME": str(self.home)})
+        self.home_patch.start()
+        self.addCleanup(self.home_patch.stop)
+
+    def write_chat(self, session_id, records, mtime=None):
+        path = self.chats / f"{session_id}.jsonl"
+        path.write_text(
+            "".join(json.dumps(record) + "\n" for record in records),
+            encoding="utf-8",
+        )
+        if mtime is not None:
+            os.utime(path, (mtime, mtime))
+        return path
+
+    def user_record(self, session_id, timestamp="2026-09-13T10:00:00Z"):
+        return {
+            "type": "user", "cwd": str(self.worktree),
+            "sessionId": session_id, "timestamp": timestamp,
+            "message": {"role": "user", "parts": [{"text": "review"}]},
+        }
+
+    def test_unique_candidate_binds_and_counts_agents_incrementally(self):
+        started = time.time() - 1
+        sid = "inner-session"
+        path = self.write_chat(sid, [self.user_record(sid)])
+        progress = self.module.ReviewProgress(self.worktree, started, self.outer)
+        first = progress.snapshot()
+        self.assertEqual(first["stage"], "preparing")
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "type": "assistant", "timestamp": "2026-09-13T10:01:00Z",
+                "message": {"parts": [{"functionCall": {
+                    "id": "a1", "name": "agent", "args": {}
+                }}]},
+            }) + "\n")
+        second = progress.snapshot()
+        self.assertEqual(second["stage"], "finder_fanout")
+        self.assertEqual(second["agentsStarted"], 1)
+        self.assertEqual(second["agentsCompleted"], 0)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "type": "tool_result", "timestamp": "2026-09-13T10:02:00Z",
+                "toolCallResult": {"callId": "a1", "status": "success"},
+            }) + "\n")
+        third = progress.snapshot()
+        self.assertEqual(third["stage"], "post_fanout")
+        self.assertEqual(third["agentsCompleted"], 1)
+        self.assertEqual(third["lastActivityAt"], "2026-09-13T10:02:00Z")
+
+    def test_zero_or_ambiguous_candidates_do_not_bind(self):
+        started = time.time() - 1
+        progress = self.module.ReviewProgress(self.worktree, started, self.outer)
+        self.assertIsNone(progress.snapshot())
+        for sid in ("inner-one", "inner-two"):
+            self.write_chat(sid, [self.user_record(sid)])
+        self.assertIsNone(progress.snapshot())
+        self.assertIsNone(progress._transcript)
+
+    def test_old_and_wrong_cwd_candidates_are_ignored(self):
+        started = time.time()
+        old = self.write_chat("old-session", [self.user_record("old-session")])
+        os.utime(old, (started - 10, started - 10))
+        wrong = self.user_record("wrong-cwd")
+        wrong["cwd"] = str(self.home / "other")
+        self.write_chat("wrong-cwd", [wrong])
+        progress = self.module.ReviewProgress(self.worktree, started, self.outer)
+        self.assertIsNone(progress.snapshot())
+
+    def test_malformed_complete_record_is_skipped(self):
+        started = time.time() - 1
+        sid = "inner-malformed"
+        path = self.write_chat(sid, [self.user_record(sid)])
+        with path.open("ab") as handle:
+            handle.write(b"{not-json}\n")
+        progress = self.module.ReviewProgress(self.worktree, started, self.outer)
+        snap = progress.snapshot()
+        self.assertEqual(snap["stage"], "preparing")
+
+
 class TestMonitorSession(unittest.TestCase):
     """In-process unit tests for the protocol emitter; the interval is
-    injected for test speed while the production constant stays 480s."""
+    injected for test speed while the production constant stays 960s."""
 
-    def test_production_heartbeat_interval_is_480_seconds(self):
+    def test_production_heartbeat_interval_is_960_seconds(self):
         module = load_helper_module()
-        self.assertEqual(module.MONITOR_HEARTBEAT_SECONDS, 480)
-        self.assertEqual(module.MonitorSession()._interval, 480)
+        self.assertEqual(module.MONITOR_HEARTBEAT_SECONDS, 960)
+        self.assertEqual(module.MONITOR_KEEPALIVE_SECONDS, 480)
+        session = module.MonitorSession()
+        self.assertEqual(session._interval, 960)
+        self.assertEqual(session._keepalive_interval, 480)
 
     def test_high_effort_budget_fits_below_max_events(self):
         module = load_helper_module()
         high_effort_budget = 8 * 3600  # 480-minute budget + grace
-        heartbeats = -(-high_effort_budget
-                       // module.MONITOR_HEARTBEAT_SECONDS)
-        self.assertLess(heartbeats + 1, 128)
+        events = -(-high_effort_budget
+                   // module.MONITOR_KEEPALIVE_SECONDS)
+        self.assertLess(events + 1, 128)
+
+    def test_heartbeat_can_include_bounded_progress(self):
+        module = load_helper_module()
+        stream = io.StringIO()
+
+        class Progress:
+            def snapshot(self):
+                return {
+                    "stage": "finder_fanout",
+                    "agentsStarted": 11,
+                    "agentsCompleted": 4,
+                    "lastActivityAt": "2026-09-13T10:00:00Z",
+                }
+
+        session = module.MonitorSession(interval=0.01, stream=stream)
+        session._progress = Progress()
+        session.start()
+        try:
+            deadline = time.monotonic() + 2
+            while not stream.getvalue():
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.005)
+            event = json.loads(
+                stream.getvalue().splitlines()[0][len(module.MONITOR_EVENT_PREFIX):]
+            )
+            self.assertEqual(event["stage"], "finder_fanout")
+            self.assertEqual(event["agentsStarted"], 11)
+            self.assertEqual(event["agentsCompleted"], 4)
+        finally:
+            session._halt()
 
     def test_heartbeat_stops_before_terminal_event(self):
         module = load_helper_module()

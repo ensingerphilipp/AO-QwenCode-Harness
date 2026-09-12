@@ -369,7 +369,8 @@ events to stdout — single-line JSON prefixed with `AO_PR_REVIEW_EVENT=`. The
 events are:
 
 ```text
-{"type":"heartbeat","elapsedSeconds":<monotonic-seconds>}
+{"type":"keepalive","elapsedSeconds":<monotonic-seconds>}
+{"type":"heartbeat","elapsedSeconds":<monotonic-seconds>,"stage":"<optional-stage>","agentsStarted":<optional-int>,"agentsCompleted":<optional-int>,"lastActivityAt":"<optional-iso-time>"}
 {"type":"complete","resultJson":"<abs-path>","disposition":"<d>",
  "semanticExitCode":<0|3|4|5|6>,"reviewKey":"owner/repo#PR@sha",
  "attemptId":"<run-dir-name>"}
@@ -380,11 +381,13 @@ Monitor event rules:
 
 - Only protocol events are emitted — never finding text, native Qwen progress,
   or any externally supplied prose.
-- A fixed 480-second `heartbeat` is emitted while the helper is running
-  (transport liveness only, keeping the monitor's 600000 ms idle timeout from
-  firing); heartbeats carry only the event type and a monotonic elapsed-second
-  count. A 480-second heartbeat over the eight-hour high-effort budget fits
-  well below the monitor `max_events` of 128.
+- Qwen 0.23.0 hard-caps monitor idle timeout at 600000 ms. A fixed 480-second
+  transport-only `keepalive` prevents idle termination and carries no semantic
+  progress. Rich `heartbeat` events are emitted every 960 seconds; they always
+  carry type and monotonic elapsed seconds and may additionally carry bounded
+  observational `stage`, agent counts, and last-activity timestamp. The
+  combined event count over the eight-hour high-effort budget stays below
+  monitor `max_events: 128`.
 - `complete` is emitted only after the current-run `result.json` is durably
   persisted and revalidated for this exact invocation, and its metadata
   (`resultJson`, `disposition`, `semanticExitCode`, `reviewKey`, `attemptId`)
@@ -483,8 +486,8 @@ the validated `result.json` named by the `complete` event.
 
 - Qwen's native `monitor` streams each bounded protocol event from the
   helper back as a notification to the owning session; the helper's
-  480-second heartbeat keeps the monitor's 600000 ms idle timeout from
-  firing during long reviews.
+  480-second transport keepalive stays below the monitor's 600000 ms idle
+  timeout; richer progress heartbeats are emitted every 960 seconds.
 - The monitor's `completed`/failed/cancelled status is a transport fact: the
   semantic verdict comes only from the validated `result.json`, and a failed
   or cancelled monitor, a missing or invalid `complete` event, or an invalid

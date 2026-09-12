@@ -112,16 +112,18 @@ disposition's native exit code: 0 pass, 3 review_error, 4 stale, 5 blocked,
   `AO_PR_REVIEW_EVENT=`:
 
   ```text
-  {"type":"heartbeat","elapsedSeconds":<monotonic-seconds>}
+  {"type":"keepalive","elapsedSeconds":<monotonic-seconds>}
+  {"type":"heartbeat","elapsedSeconds":<monotonic-seconds>,"stage":"<optional-stage>","agentsStarted":<optional-int>,"agentsCompleted":<optional-int>,"lastActivityAt":"<optional-iso-time>"}
   {"type":"complete","resultJson":"<abs-path>","disposition":"<d>",
    "semanticExitCode":<0|3|4|5|6>,"reviewKey":"owner/repo#PR@sha",
    "attemptId":"<run-dir-name>"}
   {"type":"transport_error","semanticExitCode":<2|3>}
   ```
 
-  A fixed 480-second `heartbeat` is emitted while the helper is running
-  (transport liveness only, keeping the monitor's 600000 ms idle timeout
-  from firing); `complete` is emitted only after the current-run
+  Qwen 0.23.0 hard-caps monitor idle timeout at 600000 ms, so a fixed
+  480-second transport-only `keepalive` prevents idle termination. A richer
+  960-second `heartbeat` may carry bounded observational stage/agent-count
+  metadata parsed mechanically from the inner Qwen transcript; `complete` is emitted only after the current-run
   `result.json` is durably persisted and revalidated for this exact
   invocation, with metadata that exactly matches that result; heartbeat
   generation stops before the terminal event; cancellation never fabricates
@@ -161,8 +163,8 @@ the validated `result.json` named by the `complete` event.
 
 - Qwen's native `monitor` streams each bounded protocol event from the
   helper back as a notification to the owning session; the helper's
-  480-second heartbeat keeps the monitor's 600000 ms idle timeout from
-  firing during long reviews.
+  480-second transport keepalive stays below the monitor's 600000 ms idle
+  timeout; richer progress heartbeats are emitted every 960 seconds.
 - The monitor's `completed`/failed/cancelled status is a transport fact: the
   semantic verdict comes only from the validated `result.json`, and a failed
   or cancelled monitor, a missing or invalid `complete` event, or an invalid

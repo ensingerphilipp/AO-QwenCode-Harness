@@ -43,11 +43,11 @@ SEMANTIC_REVIEW_CONTEXT = "ao/semantic-review"
 TRANSPORT_DIRECT = "direct"
 TRANSPORT_BACKGROUND_ENVELOPE = "background-envelope"
 TRANSPORT_MONITOR_ENVELOPE = "monitor-envelope"
-# Monitor transport liveness: one fixed heartbeat every 480 seconds keeps
-# Qwen Monitor's 600000 ms idle timeout from firing while a review runs for
-# up to eight hours. This is transport liveness only — it neither inspects
-# nor drives the review.
-MONITOR_HEARTBEAT_SECONDS = 480
+# Qwen Monitor hard-caps idle_timeout_ms at 600000 (10 minutes). A tiny
+# transport-only keepalive therefore remains below that cap, while the richer
+# observational progress heartbeat is intentionally less frequent.
+MONITOR_KEEPALIVE_SECONDS = 480
+MONITOR_HEARTBEAT_SECONDS = 960
 MONITOR_EVENT_PREFIX = "AO_PR_REVIEW_EVENT="
 DEFAULT_STATE_ROOT = Path.home() / ".local/state/ao-pr-review"
 STATE_ROOT_ENV = "AO_PR_REVIEW_STATE_DIR"
@@ -135,8 +135,8 @@ Rules:
     any disposition; direct mode keeps the semantic exit codes.
   * --monitor-envelope uses the same result contract and exit policy as
     --background-envelope, but streams bounded AO_PR_REVIEW_EVENT= protocol
-    lines (a fixed-interval heartbeat and exactly one terminal event) so
-    Qwen's native Monitor tool can deliver notifications to the session
+    lines (transport keepalives, bounded progress heartbeats, and exactly one
+    terminal event) so Qwen's native Monitor tool can deliver notifications to the session
     that launched the review.
 """
 
@@ -1348,28 +1348,162 @@ def validate_background_result(ctx: dict, result_path: Path) -> dict:
 _MONITOR_SESSION = None
 
 
+def _monitor_chat_dir(outer_session_id):
+    """Resolve the exact Qwen chats directory from the outer session id."""
+    if not outer_session_id or not re.fullmatch(r"[A-Za-z0-9_-]+", outer_session_id):
+        return None
+    root = Path.home() / ".qwen/projects"
+    matches = list(root.glob(f"*/chats/{outer_session_id}.jsonl"))
+    if len(matches) != 1:
+        return None
+    return matches[0].parent
+
+
+def _credible_inner_transcript(path, toplevel):
+    """Validate the immutable identity fields of a candidate chat transcript."""
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            first = json.loads(handle.readline())
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    return (
+        first.get("type") == "user"
+        and first.get("cwd") == str(toplevel)
+        and first.get("sessionId") == path.stem
+    )
+
+
+class ReviewProgress:
+    """Best-effort, model-free progress projection from one inner Qwen chat."""
+
+    def __init__(self, toplevel, started_epoch, outer_session_id):
+        self._toplevel = Path(toplevel)
+        self._started_epoch = started_epoch
+        self._outer_session_id = outer_session_id
+        self._transcript = None
+        self._offset = 0
+        self._agent_calls = set()
+        self._agent_results = set()
+        self._last_activity = None
+
+    def _bind_once(self):
+        if self._transcript is not None:
+            return True
+        chats = _monitor_chat_dir(self._outer_session_id)
+        if chats is None:
+            return False
+        candidates = []
+        try:
+            paths = list(chats.glob("*.jsonl"))
+        except OSError:
+            return False
+        for path in paths:
+            if path.stem == self._outer_session_id:
+                continue
+            try:
+                if path.stat().st_mtime < self._started_epoch:
+                    continue
+            except OSError:
+                continue
+            if _credible_inner_transcript(path, self._toplevel):
+                candidates.append(path)
+        if len(candidates) != 1:
+            return False
+        self._transcript = candidates[0]
+        return True
+
+    def _consume_record(self, record):
+        timestamp = record.get("timestamp")
+        if isinstance(timestamp, str):
+            self._last_activity = timestamp
+        if record.get("type") == "assistant":
+            message = record.get("message")
+            if not isinstance(message, dict):
+                return
+            for part in message.get("parts", []):
+                if not isinstance(part, dict):
+                    continue
+                call = part.get("functionCall")
+                if not isinstance(call, dict) or call.get("name") != "agent":
+                    continue
+                call_id = call.get("id")
+                if isinstance(call_id, str) and call_id:
+                    self._agent_calls.add(call_id)
+        elif record.get("type") == "tool_result":
+            result = record.get("toolCallResult")
+            if not isinstance(result, dict):
+                return
+            call_id = result.get("callId")
+            if isinstance(call_id, str) and call_id in self._agent_calls:
+                self._agent_results.add(call_id)
+
+    def snapshot(self):
+        try:
+            if not self._bind_once():
+                return None
+            with self._transcript.open("rb") as handle:
+                handle.seek(self._offset)
+                chunk = handle.read()
+            consumed = 0
+            for line in chunk.splitlines(keepends=True):
+                if not line.endswith(b"\n"):
+                    break
+                consumed += len(line)
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                self._consume_record(record)
+            self._offset += consumed
+        except (OSError, ValueError):
+            return None
+        started = len(self._agent_calls)
+        completed = len(self._agent_results)
+        if started == 0:
+            stage = "preparing"
+        elif completed < started:
+            stage = "finder_fanout"
+        else:
+            stage = "post_fanout"
+        result = {
+            "stage": stage,
+            "agentsStarted": started,
+            "agentsCompleted": completed,
+        }
+        if self._last_activity is not None:
+            result["lastActivityAt"] = self._last_activity
+        return result
+
+
 class MonitorSession:
     """Bounded, deterministic protocol-event emitter for the monitor transport.
 
     Emits single-line JSON events prefixed with AO_PR_REVIEW_EVENT=. A daemon
-    thread emits a fixed-interval heartbeat (transport liveness only) until
-    stopped. stdout writes are serialized under a lock so the heartbeat thread
-    and the main thread never interleave a partial line. It neither inspects
-    nor drives the review: it only keeps the Qwen Monitor idle timeout from
-    firing while a long review runs. It never emits finding text
-    or any externally supplied prose — only the event type, a monotonic
-    elapsed-second count, and the validated terminal metadata.
+    thread emits transport keepalives plus less-frequent bounded progress
+    heartbeats until stopped. stdout writes are serialized under a lock so the
+    worker thread and the main thread never interleave a partial line. Progress
+    is observational only: it never drives the review and never emits finding
+    text or externally supplied prose. Terminal metadata remains authoritative.
     """
 
     def __init__(self, interval=None, stream=None):
         self._interval = (
             MONITOR_HEARTBEAT_SECONDS if interval is None else interval
         )
+        self._keepalive_interval = (
+            MONITOR_KEEPALIVE_SECONDS if interval is None else interval
+        )
         self._stream = stream
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread = None
         self._start = None
+        self._progress = None
+
+    def configure_progress(self, toplevel, started_epoch):
+        self._progress = ReviewProgress(
+            toplevel, started_epoch, os.environ.get("QWEN_CODE_SESSION_ID")
+        )
 
     # -- liveness ---------------------------------------------------------
 
@@ -1382,17 +1516,28 @@ class MonitorSession:
         return self
 
     def _heartbeat_worker(self):
-        # The wait doubles as the stop check: a stop during the wait ends the
-        # thread without emitting an extra heartbeat.
+        # Production ticks at the transport keepalive interval. Every second
+        # tick is the richer 960-second progress heartbeat. Tests that inject
+        # an interval keep the historical one-event-per-tick behavior.
+        next_heartbeat = self._start + self._interval
         while not self._stop_event.is_set():
-            if self._stop_event.wait(self._interval):
+            if self._stop_event.wait(self._keepalive_interval):
                 return
-            self.emit(
-                {
-                    "type": "heartbeat",
-                    "elapsedSeconds": int(time.monotonic() - self._start),
-                }
-            )
+            now = time.monotonic()
+            elapsed = int(now - self._start)
+            if now < next_heartbeat:
+                self.emit({"type": "keepalive", "elapsedSeconds": elapsed})
+                continue
+            next_heartbeat += self._interval
+            event = {"type": "heartbeat", "elapsedSeconds": elapsed}
+            if self._progress is not None:
+                try:
+                    progress = self._progress.snapshot()
+                except Exception:
+                    progress = None
+                if progress:
+                    event.update(progress)
+            self.emit(event)
 
     # -- event emission ---------------------------------------------------
 
@@ -1873,6 +2018,9 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             "--approval-mode", "yolo",
             "--timeout-minutes", str(timeout_minutes),
         ]
+        native_review_started = time.time()
+        if session is not None:
+            session.configure_progress(toplevel, native_review_started)
         try:
             review_proc = subprocess.run(
                 command,
@@ -2174,7 +2322,7 @@ def main(argv: list) -> int:
                 transport = TRANSPORT_DIRECT
             session = None
             if transport == TRANSPORT_MONITOR_ENVELOPE:
-                # One in-flight session per process; the heartbeat thread runs
+                # One in-flight session per process; the monitor event thread runs
                 # for the whole review and is stopped before the terminal
                 # event is emitted (in finish()) or by an exception handler.
                 session = MonitorSession().start()

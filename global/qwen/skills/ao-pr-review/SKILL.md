@@ -118,15 +118,16 @@ max_events:
 
 Do not add `&`, `nohup`, a foreground shell call, a second watcher,
 a polling loop, or a scheduler. There is no shell timeout parameter;
-liveness is handled inside the helper by a fixed-interval heartbeat
-event that keeps the 600000 ms monitor idle timeout from firing while
-a long review runs.
+liveness is handled inside the helper by a fixed 480-second transport
+`keepalive` event that stays below Qwen 0.23.0's hard 600000 ms monitor idle
+timeout while a long review runs.
 
 The monitor-envelope transport streams only bounded, deterministic protocol
 events (single-line JSON prefixed with `AO_PR_REVIEW_EVENT=`): a fixed
-480-second `heartbeat` (transport liveness only — it carries just the event
-type and a monotonic elapsed-second count, never findings or prose) and
-exactly one terminal event — `complete` when a trustworthy `result.json` was
+480-second transport-only `keepalive`, a fixed 960-second `heartbeat` carrying
+optional bounded observational progress (`stage`, agent started/completed
+counts, and last activity time; never findings or prose), and exactly one
+terminal event — `complete` when a trustworthy `result.json` was
 persisted and revalidated for this exact invocation, or `transport_error`
 otherwise. The helper process exits 0 only for a trustworthy result (any
 disposition) and exits nonzero for malformed usage, crash, cancellation,
@@ -156,8 +157,12 @@ head; never reuse the old SHA).
 
 When a monitor notification for this review's monitor ID arrives:
 
-- `heartbeat` — nonterminal. Report only `REVIEW RUNNING` with the elapsed
-  time from the event, then stop. Do nothing else.
+- `keepalive` — nonterminal transport liveness only. Do not report progress or
+  take any action; stop.
+- `heartbeat` — nonterminal. Report `REVIEW RUNNING` with the elapsed time.
+  When the event includes validated bounded progress fields, also report the
+  stage and `agentsCompleted/agentsStarted`. Do not read the raw Qwen transcript
+  yourself, infer findings, or take any action from progress. Then stop.
 - `complete` — read and validate the exact `resultJson` path from the event
   (re-read it from disk and check its `reviewKey`, `attemptId`, `disposition`,
   and `semanticExitCode`), then display the full semantic result from
@@ -247,11 +252,12 @@ result is the stable identity used for deduplication.
   does not push a completion notification; the monitor transport is the
   supported notification mechanism, and its result is retrieved explicitly
   from the validated `result.json`.
-- The monitor `idle_timeout_ms` of 600000 is kept alive by a fixed 480-second
-  heartbeat inside the helper (transport liveness only, not a review
-  controller).
-- A fixed 480-second heartbeat over the eight-hour high-effort budget fits
-  well below the `max_events` of 128.
+- Qwen 0.23.0 hard-caps monitor `idle_timeout_ms` at 600000, so a fixed
+  480-second transport-only `keepalive` prevents idle termination. It carries
+  no semantic progress and is not a review controller.
+- Rich observational `heartbeat` events are emitted every 960 seconds. The
+  combined keepalive/heartbeat event count over the eight-hour high-effort
+  budget remains well below `max_events: 128`.
 - Terminating the Qwen session can terminate its in-flight monitor review.
 - An interrupted or cancelled review has no valid verdict and must later be
   re-run fresh against the exact current head SHA.
