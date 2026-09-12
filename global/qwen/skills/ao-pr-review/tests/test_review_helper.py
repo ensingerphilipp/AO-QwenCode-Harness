@@ -2695,7 +2695,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.1")
+        self.assertEqual(version, "0.3.2")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3741,7 +3741,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.1", readme)
+        self.assertIn("VERSION=0.3.2", readme)
         self.assertIn("contractVersion=6", readme)
 
 

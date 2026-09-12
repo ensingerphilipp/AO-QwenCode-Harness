@@ -1,11 +1,11 @@
-# ao-pr-review — v0.3.1
+# ao-pr-review — v0.3.2
 
 A host-global Qwen Code Skill that runs **one explicit, non-posting native
 Qwen semantic review** of an exact GitHub PR head after required
 deterministic CI passes (required checks excluding only the exact context
 `ao/semantic-review`).
 
-- `VERSION=0.3.1`
+- `VERSION=0.3.2`
 - `contractVersion=6` (result/finding contract)
 - `effortPolicyVersion=2` (deterministic medium/high selection with validated project extensions)
 
@@ -185,7 +185,7 @@ the validated `result.json` named by the `complete` event.
 ## Layout
 
 ```text
-VERSION                                   0.3.1
+VERSION                                   0.3.2
 SKILL.md                                  skill definition (operator or dispatched AO reviewer)
 scripts/run_explicit_review.py            deterministic helper (Python 3, stdlib only)
 references/contract.md                    Qwen 0.22.3 artifact + result contract
@@ -205,7 +205,7 @@ Install an exact copy of this tree (excluding `.git`) at:
 with directories `0755`, Markdown/JSON/Python files `0644`, and
 `scripts/run_explicit_review.py` `0755`.
 
-The versioned ZIP (e.g. `ao-pr-review-v0.3.1.zip`, built with
+The versioned ZIP (e.g. `ao-pr-review-v0.3.2.zip`, built with
 `git archive` from the committed HEAD) is a **source archive**: it
 captures the committed tree and records no live state. Installation from
 it is a plain copy plus an explicit restoration of executable mode
