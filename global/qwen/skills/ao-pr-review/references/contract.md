@@ -2,7 +2,7 @@
 
 ## Invocation
 
-Skill (manual only):
+Skill (operator, or dispatched AO reviewer):
 
 ```text
 /ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|medium|high]
