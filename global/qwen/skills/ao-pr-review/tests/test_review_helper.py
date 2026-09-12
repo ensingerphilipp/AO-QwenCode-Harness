@@ -2679,7 +2679,7 @@ class TestSkillDocs(unittest.TestCase):
             "selecting medium or high effort deterministically.",
             frontmatter,
         )
-        self.assertIn("disable-model-invocation: true", frontmatter)
+        self.assertNotIn("disable-model-invocation", frontmatter)
 
     def test_skill_injects_args_file_only(self):
         text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
@@ -2695,7 +2695,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.0")
+        self.assertEqual(version, "0.3.1")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3248,12 +3248,15 @@ class TestMonitorExecutionDocs(unittest.TestCase):
             section,
         )
 
-    def test_frontmatter_remains_manual_only(self):
+    def test_skill_is_model_invocable(self):
         text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
         frontmatter = text.split("---\n", 2)[1]
-        self.assertIn("disable-model-invocation: true", frontmatter)
-        self.assertIn("## Invocation (manual only)", text)
-        self.assertIn("Never invoke it on your own", text)
+        self.assertNotIn("disable-model-invocation", frontmatter)
+        self.assertNotIn("## Invocation (manual only)", text)
+        self.assertIn("## Invocation", text)
+        self.assertIn("exactly two supported invocation paths", text)
+        self.assertIn("Dispatched AO reviewer", text)
+        self.assertIn("exactly the dispatched arguments", text)
 
 
 # ---------------------------------------------------------------------------
@@ -3738,7 +3741,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.0", readme)
+        self.assertIn("VERSION=0.3.1", readme)
         self.assertIn("contractVersion=6", readme)
 
 

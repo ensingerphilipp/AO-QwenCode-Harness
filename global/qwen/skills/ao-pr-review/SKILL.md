@@ -1,7 +1,6 @@
 ---
 name: ao-pr-review
 description: Run one explicit, non-posting native Qwen semantic review of an exact GitHub PR head after required CI passes, selecting medium or high effort deterministically.
-disable-model-invocation: true
 ---
 
 # ao-pr-review
@@ -15,9 +14,20 @@ source, never repairs findings, and never merges. The native Qwen process may
 leave untracked local artifact files behind; the helper records that in the
 evidence and leaves everything in place.
 
-## Invocation (manual only)
+## Invocation
 
-This skill is launched manually by the operator. Never invoke it on your own.
+This skill has exactly two supported invocation paths:
+
+1. **Operator**: the operator types the slash command in their own Qwen
+   session.
+2. **Dispatched AO reviewer**: a model acting in a one-shot AO reviewer
+   session dispatched by the orchestrator for this review invokes this
+   skill with exactly the dispatched arguments — a PR number or canonical
+   PR URL, the expected 40-character head SHA, and the effort request
+   (`auto`, `medium`, or `high`).
+
+A model that was not dispatched for this review does not invoke this
+skill on its own initiative.
 
 Supported forms:
 
@@ -29,6 +39,17 @@ Supported forms:
 - The expected head SHA must be exactly 40 lowercase hexadecimal characters.
 - The default effort request is `auto`; the helper deterministically selects
   `medium` or `high` (policy in `references/policy.md`).
+
+Fail-closed argument handling (both paths):
+
+- Arguments pass to the helper **only** via the CLI-injected
+  `<skill-args-file>` path. Never retype, reconstruct, or "correct" the
+  PR, SHA, or effort from conversational text, examples, or memory.
+- The helper runs **only** through Qwen's native `monitor` tool (see
+  "Review execution (Qwen Monitor)").
+- If a non-help invocation carries no `<skill-args-file>` tag, report that
+  the invocation carried no argument file and stop — never retype,
+  reconstruct, or guess arguments.
 
 ## Mandatory argument handling (Qwen Code 0.22.3)
 
