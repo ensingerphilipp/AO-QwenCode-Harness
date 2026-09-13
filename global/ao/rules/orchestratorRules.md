@@ -54,7 +54,7 @@ For `SEMANTIC_REVIEW_RESULT`:
 
 A missing, malformed, identity-mismatched, cancelled, or transport-failed result is a review error, never a pass. Do not silently retry.
 
-A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. If the PR head is unchanged and this review identity has not yet been resumed, send the same reviewer Task the same `/ao-pr-review` command again so its existing worktree/state can resume. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
+A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. If the PR head is unchanged and this review identity has not yet been resumed, send the same reviewer Task the same `/ao-pr-review` command again so Qwen can attempt native continuation from surviving state. `--resume` is a request, not proof of continuation; do not claim resume succeeded unless Qwen explicitly reports it. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
 
 ## Route the lifecycle result
 

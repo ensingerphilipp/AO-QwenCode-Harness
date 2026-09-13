@@ -2701,7 +2701,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.4")
+        self.assertEqual(version, "0.3.5")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3069,9 +3069,9 @@ class TestNativeTimeoutPolicy(unittest.TestCase):
         module = load_helper_module()
         self.assertEqual(module.NATIVE_TIMEOUT_MINUTES["medium"], 240)
 
-    def test_high_selects_480_minutes(self):
+    def test_high_selects_600_minutes(self):
         module = load_helper_module()
-        self.assertEqual(module.NATIVE_TIMEOUT_MINUTES["high"], 480)
+        self.assertEqual(module.NATIVE_TIMEOUT_MINUTES["high"], 600)
 
     def test_medium_wrapper_timeout_is_native_plus_600_seconds(self):
         module = load_helper_module()
@@ -3082,8 +3082,8 @@ class TestNativeTimeoutPolicy(unittest.TestCase):
     def test_high_wrapper_timeout_is_native_plus_600_seconds(self):
         module = load_helper_module()
         minutes, wrapper_seconds = module.native_timeout_plan("high")
-        self.assertEqual(minutes, 480)
-        self.assertEqual(wrapper_seconds, 480 * 60 + 600)
+        self.assertEqual(minutes, 600)
+        self.assertEqual(wrapper_seconds, 600 * 60 + 600)
 
     def test_wrapper_grace_is_600_seconds(self):
         module = load_helper_module()
@@ -3093,8 +3093,8 @@ class TestNativeTimeoutPolicy(unittest.TestCase):
         module = load_helper_module()
         self.assertEqual(module.REVIEW_DEADLINE_RESERVE_SECONDS, 3600)
         self.assertEqual(module.REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS, 1200)
-        env = module.review_deadline_env(480, 1000.75)
-        self.assertEqual(env["QWEN_REVIEW_DEADLINE_EPOCH"], str(int(1000.75 + 480 * 60)))
+        env = module.review_deadline_env(600, 1000.75)
+        self.assertEqual(env["QWEN_REVIEW_DEADLINE_EPOCH"], str(int(1000.75 + 600 * 60)))
         self.assertEqual(env["QWEN_REVIEW_DEADLINE_RESERVE_SECONDS"], "3600")
         self.assertEqual(env["QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS"], "1200")
 
@@ -3129,13 +3129,13 @@ class TestNativeTimeoutEndToEnd(HelperBase):
         self.assertEqual(doc["selectedEffort"], "medium")
         self.assert_timeout_wiring(doc, 240)
 
-    def test_high_run_passes_480_minutes(self):
+    def test_high_run_passes_600_minutes(self):
         self.setup_success(companion=make_companion(effort="high"))
         result = self.run_helper("5", VALID_SHA, "high")
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         doc = self.read_result()
         self.assertEqual(doc["selectedEffort"], "high")
-        self.assert_timeout_wiring(doc, 480)
+        self.assert_timeout_wiring(doc, 600)
 
     def test_auto_uses_medium_timeout_when_medium_selected(self):
         self.setup_success()
@@ -3156,7 +3156,7 @@ class TestNativeTimeoutEndToEnd(HelperBase):
         doc = self.read_result()
         self.assertEqual(doc["requestedEffort"], "auto")
         self.assertEqual(doc["selectedEffort"], "high")
-        self.assert_timeout_wiring(doc, 480)
+        self.assert_timeout_wiring(doc, 600)
 
 
 # ---------------------------------------------------------------------------
@@ -3764,7 +3764,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.4", readme)
+        self.assertIn("VERSION=0.3.5", readme)
         self.assertIn("contractVersion=6", readme)
 
 
@@ -4151,7 +4151,7 @@ class TestMonitorSession(unittest.TestCase):
 
     def test_high_effort_budget_fits_below_max_events(self):
         module = load_helper_module()
-        high_effort_budget = 8 * 3600  # 480-minute budget + grace
+        high_effort_budget = 10 * 3600  # 600-minute budget + grace
         events = -(-high_effort_budget
                    // module.MONITOR_KEEPALIVE_SECONDS)
         self.assertLess(events + 1, 128)

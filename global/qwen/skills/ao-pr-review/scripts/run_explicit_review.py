@@ -58,10 +58,10 @@ ARGS_FILE_MAX_BYTES = 4096
 PATCH_MAX_BYTES = 512 * 1024
 GH_TIMEOUT_SECONDS = 120
 # Deterministic effort-based native review budget (v0.2.3): selected
-# medium -> 240 minutes, selected high -> 480 minutes.
+# medium -> 240 minutes, selected high -> 600 minutes.
 NATIVE_TIMEOUT_MINUTES = {
     "medium": 240,
-    "high": 480,
+    "high": 600,
 }
 # Wrapper cleanup grace beyond the native budget (seconds).
 WRAPPER_CLEANUP_GRACE_SECONDS = 600
@@ -444,7 +444,7 @@ def select_effort(requested, pr_view, patch, patch_error, project_risk=None):
 def native_timeout_plan(selected_effort: str):
     """Deterministic (native minutes, wrapper seconds) for the selected effort.
 
-    Native minutes: medium -> 240, high -> 480. The wrapper timeout is the
+    Native minutes: medium -> 240, high -> 600. The wrapper timeout is the
     native budget plus 600 seconds of cleanup grace.
     """
     minutes = NATIVE_TIMEOUT_MINUTES[selected_effort]
@@ -2068,7 +2068,7 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             )
 
         # Exactly one native semantic review. The native timeout is the
-        # deterministic effort-based budget (medium 240 / high 480
+        # deterministic effort-based budget (medium 240 / high 600
         # minutes); the wrapper timeout adds 600 seconds of cleanup grace
         # beyond that budget. Qwen also receives a soft deadline at the same
         # hard-timeout epoch with explicit verification/composition reserves.

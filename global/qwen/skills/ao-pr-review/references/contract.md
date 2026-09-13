@@ -138,15 +138,15 @@ qwen review run <canonical-PR-URL> \
   --json \
   --fail-on request-changes \
   --approval-mode yolo \
-  --timeout-minutes <240|480>
+  --timeout-minutes <240|600>
 ```
 
 The native timeout is deterministic per selected effort (v0.2.3):
-`medium` -> 240 minutes, `high` -> 480 minutes. The Python
+`medium` -> 240 minutes, `high` -> 600 minutes. The Python
 `subprocess.run` wrapper timeout is the native budget plus 600 seconds of
 cleanup grace. Both values are persisted in `result.json` as
 `reviewTimeoutMinutes` and `wrapperTimeoutSeconds`. `--resume` is always
-passed for PR reviews; Qwen resumes only when its persisted review state
+passed for PR reviews; it requests continuation, and Qwen attempts resume and continues only when its persisted review state
 still matches and otherwise falls back to a fresh review. The helper exports
 `QWEN_REVIEW_DEADLINE_EPOCH` equal to the native hard-timeout epoch plus
 `QWEN_REVIEW_DEADLINE_RESERVE_SECONDS=3600` and
@@ -392,7 +392,7 @@ Monitor event rules:
   progress. Rich `heartbeat` events are emitted every 960 seconds; they always
   carry type and monotonic elapsed seconds and may additionally carry bounded
   observational `stage`, agent counts, and last-activity timestamp. The
-  combined event count over the eight-hour high-effort budget stays below
+  combined event count over the ten-hour high-effort budget stays below
   monitor `max_events: 128`.
 - `complete` is emitted only after the current-run `result.json` is durably
   persisted and revalidated for this exact invocation, and its metadata
