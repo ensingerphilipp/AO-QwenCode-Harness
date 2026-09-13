@@ -54,6 +54,8 @@ For `SEMANTIC_REVIEW_RESULT`:
 
 A missing, malformed, identity-mismatched, cancelled, or transport-failed result is a review error, never a pass. Do not silently retry.
 
+A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. If the PR head is unchanged and this review identity has not yet been resumed, send the same reviewer Task the same `/ao-pr-review` command again so its existing worktree/state can resume. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
+
 ## Route the lifecycle result
 
 Use the semantic disposition produced by the trusted Skill result; do not redefine it.
@@ -62,7 +64,7 @@ Use the semantic disposition produced by the trusted Skill result; do not redefi
 - `blocked`: route one `REVIEW_FIX_REQUEST` to the original worker only when the required repair is clearly PR-caused, in scope, outside project HITL boundaries, and narrowly actionable from the trusted findings. Otherwise require human attention.
 - `needs_human`: report the decision or uncertainty that requires judgment and pause.
 - `stale`: discard the old verdict and wait for a new exact SHA with passing deterministic verification/CI.
-- `review_error`: report the exact failure and retained evidence information. Do not issue a semantic code-repair request.
+- `review_error`: apply the single timeout-resume exception above; otherwise report the exact failure and retained evidence information. Do not issue a semantic code-repair request.
 
 ## One repair and rereview maximum
 

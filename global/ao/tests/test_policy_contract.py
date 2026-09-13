@@ -23,6 +23,16 @@ class AOPolicyContractTests(unittest.TestCase):
         self.assertIn("If semantic review is disabled", PUB)
         self.assertIn("create or update neither publication", PUB)
 
+    def test_timeout_review_resume_is_bounded_and_same_reviewer(self):
+        for phrase in (
+            "`timedOut: true` is the sole automatic-resume case",
+            "same reviewer Task",
+            "Never spawn a replacement reviewer",
+            "at most one automatic resume",
+            "stop for human attention",
+        ):
+            self.assertIn(phrase, ORCH)
+
     def test_worker_completion_handoff_is_explicit_and_regression_protected(self):
         for phrase in (
             "ao send --session <ACTIVE_ORCHESTRATOR_ID>",
