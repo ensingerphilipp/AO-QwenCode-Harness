@@ -65,6 +65,11 @@ NATIVE_TIMEOUT_MINUTES = {
 }
 # Wrapper cleanup grace beyond the native budget (seconds).
 WRAPPER_CLEANUP_GRACE_SECONDS = 600
+# Qwen review soft-deadline policy. The deadline itself is the native hard
+# timeout epoch; these reserves make Qwen stop launching deeper audit work
+# early enough to verify and compose a semantic verdict before hard timeout.
+REVIEW_DEADLINE_RESERVE_SECONDS = 3600
+REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS = 1200
 LARGE_CHANGE_FILE_THRESHOLD = 15
 LARGE_CHANGE_LINE_THRESHOLD = 500
 
@@ -444,6 +449,25 @@ def native_timeout_plan(selected_effort: str):
     """
     minutes = NATIVE_TIMEOUT_MINUTES[selected_effort]
     return minutes, minutes * 60 + WRAPPER_CLEANUP_GRACE_SECONDS
+
+
+def review_deadline_env(timeout_minutes: int, started_at: float) -> dict:
+    """Qwen's soft-deadline environment for one native review run.
+
+    The deadline epoch matches the native hard timeout. Qwen uses the reserve
+    and compose floor to stop open-ended audit work early enough to verify and
+    compose before that hard deadline.
+    """
+    deadline_epoch = int(started_at + timeout_minutes * 60)
+    return {
+        "QWEN_REVIEW_DEADLINE_EPOCH": str(deadline_epoch),
+        "QWEN_REVIEW_DEADLINE_RESERVE_SECONDS": str(
+            REVIEW_DEADLINE_RESERVE_SECONDS
+        ),
+        "QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS": str(
+            REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2046,7 +2070,8 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
         # Exactly one native semantic review. The native timeout is the
         # deterministic effort-based budget (medium 240 / high 480
         # minutes); the wrapper timeout adds 600 seconds of cleanup grace
-        # beyond that budget.
+        # beyond that budget. Qwen also receives a soft deadline at the same
+        # hard-timeout epoch with explicit verification/composition reserves.
         timeout_minutes, wrapper_timeout_seconds = native_timeout_plan(
             selected_effort
         )
@@ -2056,12 +2081,17 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
         command = [
             "qwen", "review", "run", canonical,
             "--effort", selected_effort,
+            "--resume",
             "--json",
             "--fail-on", "request-changes",
             "--approval-mode", "yolo",
             "--timeout-minutes", str(timeout_minutes),
         ]
         native_review_started = time.time()
+        review_env = os.environ.copy()
+        review_env.update(
+            review_deadline_env(timeout_minutes, native_review_started)
+        )
         if session is not None:
             session.configure_progress(toplevel, native_review_started)
         try:
@@ -2071,7 +2101,7 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                 text=True,
                 timeout=wrapper_timeout_seconds,
                 cwd=toplevel,
-                env=os.environ,
+                env=review_env,
             )
         except (FileNotFoundError, subprocess.SubprocessError) as exc:
             return finish(

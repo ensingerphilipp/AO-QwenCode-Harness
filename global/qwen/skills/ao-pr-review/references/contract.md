@@ -129,12 +129,12 @@ immediately after — are kept as distinct fields.
 
 ## Native command
 
-Exactly one fresh native semantic review, with stdout and stderr captured
-separately:
+Exactly one native semantic review, opportunistically resumable when Qwen validates compatible interrupted PR-review state, with stdout and stderr captured separately:
 
 ```text
 qwen review run <canonical-PR-URL> \
   --effort <selected-medium-or-high> \
+  --resume \
   --json \
   --fail-on request-changes \
   --approval-mode yolo \
@@ -145,12 +145,18 @@ The native timeout is deterministic per selected effort (v0.2.3):
 `medium` -> 240 minutes, `high` -> 480 minutes. The Python
 `subprocess.run` wrapper timeout is the native budget plus 600 seconds of
 cleanup grace. Both values are persisted in `result.json` as
-`reviewTimeoutMinutes` and `wrapperTimeoutSeconds`. A native timeout
-(wrapper `timedOut`, or an exit that is neither 0 nor 3) or a wrapper
-timeout (the subprocess is killed) remains `review_error`.
+`reviewTimeoutMinutes` and `wrapperTimeoutSeconds`. `--resume` is always
+passed for PR reviews; Qwen resumes only when its persisted review state
+still matches and otherwise falls back to a fresh review. The helper exports
+`QWEN_REVIEW_DEADLINE_EPOCH` equal to the native hard-timeout epoch plus
+`QWEN_REVIEW_DEADLINE_RESERVE_SECONDS=3600` and
+`QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS=1200`, allowing Qwen to stop
+open-ended audit work while enough time remains to verify and compose. A
+native timeout (wrapper `timedOut`, or an exit that is neither 0 nor 3) or a
+wrapper timeout (the subprocess is killed) remains `review_error`.
 
-`--comment` and `--resume` are forbidden. `qwen --version` is called once
-for evidence and is not a semantic review.
+`--comment` is forbidden. `qwen --version` is called once for evidence and
+is not a semantic review.
 
 ## Wrapper (qwen-run.json)
 
@@ -496,8 +502,9 @@ the validated `result.json` named by the `complete` event.
   and their output file, but they do not push a completion notification that
   resumes result handling, so real reviews never rely on that path.
 - Terminating the Qwen session can terminate its in-flight monitor review.
-- An interrupted or cancelled review has no valid verdict and must later be
-  re-run fresh against the exact current head SHA.
+- An interrupted or cancelled review has no valid verdict. A later invocation
+  re-reads the exact current head SHA and passes review-level `--resume`; Qwen
+  continues compatible interrupted review state or falls back fresh.
 - For manual qualification, invoke this skill inside a dedicated AO reviewer Task session — not the main orchestrator and not the implementation worker.
 - AO orchestrator rules create and supervise the dedicated reviewer Task;
   this Skill implements no AO scheduling, routing, repair, or publication.

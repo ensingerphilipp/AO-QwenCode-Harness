@@ -149,9 +149,10 @@ scheduler: the monitor's events are how the result comes back.
 
 A monitor review is a child of its Qwen session.
 Terminating the Qwen session can terminate the in-flight review.
-An interrupted, cancelled, or auto-stopped review has no valid verdict and
-must later be re-run fresh against the exact current head SHA (re-read the
-head; never reuse the old SHA).
+An interrupted, cancelled, or auto-stopped review has no valid verdict. A
+later invocation must re-read the exact current head SHA; the helper passes
+review-level `--resume`, so Qwen continues compatible interrupted review state
+and otherwise falls back to a fresh review.
 
 ## Handling Monitor events
 
@@ -259,8 +260,13 @@ result is the stable identity used for deduplication.
   combined keepalive/heartbeat event count over the eight-hour high-effort
   budget remains well below `max_events: 128`.
 - Terminating the Qwen session can terminate its in-flight monitor review.
-- An interrupted or cancelled review has no valid verdict and must later be
-  re-run fresh against the exact current head SHA.
+- An interrupted or cancelled review has no valid verdict. A later helper
+  invocation still revalidates the exact current head SHA and passes Qwen
+  review-level `--resume`; compatible persisted review state is continued,
+  otherwise Qwen falls back to a fresh review.
+- The helper exports Qwen's soft review deadline at the native hard-timeout
+  epoch, with a 3600-second reserve and 1200-second compose floor, so deep
+  reverse audit can stop in time for verification and verdict composition.
 - For manual qualification, invoke this skill inside a dedicated AO reviewer Task session — not the main orchestrator and not the implementation worker.
 - The AO orchestrator rules create and supervise the dedicated reviewer Task;
   the Skill does not own AO scheduling or routing.

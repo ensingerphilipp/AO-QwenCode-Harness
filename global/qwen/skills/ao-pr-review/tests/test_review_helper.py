@@ -106,7 +106,13 @@ def log(argv):
     p = os.environ.get("FAKE_LOG")
     if p:
         with open(p, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"exe": "qwen", "argv": argv}) + "\n")
+            f.write(json.dumps({
+                "exe": "qwen",
+                "argv": argv,
+                "deadlineEpoch": os.environ.get("QWEN_REVIEW_DEADLINE_EPOCH"),
+                "deadlineReserve": os.environ.get("QWEN_REVIEW_DEADLINE_RESERVE_SECONDS"),
+                "deadlineComposeFloor": os.environ.get("QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS"),
+            }) + "\n")
 
 def load():
     with open(os.environ["FAKE_QWEN_STATE"], encoding="utf-8") as f:
@@ -1606,6 +1612,7 @@ class TestNativeCommand(HelperBase):
             [
                 "review", "run", "https://github.com/acme/demo/pull/5",
                 "--effort", "medium",
+                "--resume",
                 "--json",
                 "--fail-on", "request-changes",
                 "--approval-mode", "yolo",
@@ -1620,13 +1627,13 @@ class TestNativeCommand(HelperBase):
         argv = self.qwen_review_argv()
         self.assertEqual(argv[argv.index("--effort") + 1], "high")
 
-    def test_no_comment_or_resume_flags(self):
+    def test_no_comment_and_review_run_is_resumable(self):
         self.setup_success()
         result = self.run_helper("5", VALID_SHA)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         for entry in self.invocation_log():
             self.assertNotIn("--comment", entry["argv"])
-            self.assertNotIn("--resume", entry["argv"])
+        self.assertIn("--resume", self.qwen_review_argv())
 
     def test_exactly_one_semantic_review_and_one_version_call(self):
         self.setup_success()
@@ -2602,7 +2609,6 @@ class TestForbiddenOperations(unittest.TestCase):
             "ao send",
             "set-config",
             "--comment",
-            "--resume",
             "git commit",
             "git push",
             "git merge",
@@ -2695,7 +2701,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.3")
+        self.assertEqual(version, "0.3.4")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3083,6 +3089,15 @@ class TestNativeTimeoutPolicy(unittest.TestCase):
         module = load_helper_module()
         self.assertEqual(module.WRAPPER_CLEANUP_GRACE_SECONDS, 600)
 
+    def test_soft_deadline_policy_is_explicit(self):
+        module = load_helper_module()
+        self.assertEqual(module.REVIEW_DEADLINE_RESERVE_SECONDS, 3600)
+        self.assertEqual(module.REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS, 1200)
+        env = module.review_deadline_env(480, 1000.75)
+        self.assertEqual(env["QWEN_REVIEW_DEADLINE_EPOCH"], str(int(1000.75 + 480 * 60)))
+        self.assertEqual(env["QWEN_REVIEW_DEADLINE_RESERVE_SECONDS"], "3600")
+        self.assertEqual(env["QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS"], "1200")
+
     def test_python_timeout_uses_wrapper_timeout(self):
         source = HELPER.read_text(encoding="utf-8")
         self.assertIn("timeout=wrapper_timeout_seconds", source)
@@ -3095,8 +3110,16 @@ class TestNativeTimeoutEndToEnd(HelperBase):
         self.assertEqual(
             argv[argv.index("--timeout-minutes") + 1], str(flag_value)
         )
+        self.assertIn("--resume", argv)
         self.assertEqual(doc["reviewTimeoutMinutes"], flag_value)
         self.assertEqual(doc["wrapperTimeoutSeconds"], flag_value * 60 + 600)
+        review_entry = next(
+            e for e in self.invocation_log()
+            if e["exe"] == "qwen" and e["argv"][:2] == ["review", "run"]
+        )
+        self.assertEqual(review_entry["deadlineReserve"], "3600")
+        self.assertEqual(review_entry["deadlineComposeFloor"], "1200")
+        self.assertIsNotNone(review_entry["deadlineEpoch"])
 
     def test_medium_run_passes_240_minutes(self):
         self.setup_success()
@@ -3217,7 +3240,7 @@ class TestMonitorExecutionDocs(unittest.TestCase):
         section = _ao_skill_section("## Review execution")
         self.assertIn("can terminate", section)
         self.assertIn("no valid verdict", section)
-        self.assertIn("re-run fresh", section)
+        self.assertIn("review-level `--resume`", section)
         self.assertIn("exact current head SHA", section)
 
     def test_heartbeat_is_nonterminal(self):
@@ -3272,7 +3295,7 @@ class TestOwnershipDocs(unittest.TestCase):
         "completion notification",
         "Terminating the Qwen session can terminate",
         "no valid verdict",
-        "re-run fresh",
+        "review-level `--resume`",
         "exact current head SHA",
         "dedicated AO reviewer Task session",
         "orchestratorRules",
@@ -3741,7 +3764,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.3", readme)
+        self.assertIn("VERSION=0.3.4", readme)
         self.assertIn("contractVersion=6", readme)
 
 
