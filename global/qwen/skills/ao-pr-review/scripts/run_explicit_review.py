@@ -2145,13 +2145,19 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                 f"{exc}"
             )
         if identity_error is None and identity_after["trackedStatus"]:
-            # The baseline was required to be clean, so any tracked/staged
-            # entry after the review is a change made during it.
-            identity_error = (
-                "tracked repository content changed during review: "
-                + json.dumps(identity_after["trackedStatus"], sort_keys=True)
-            )
-        elif (
+            # Qwen may persist its own runtime ignore entry in the repository
+            # root .gitignore. Tolerate that path only; every other tracked or
+            # staged change still invalidates the review.
+            disallowed_status = [
+                entry for entry in identity_after["trackedStatus"]
+                if entry[3:] != ".gitignore"
+            ]
+            if disallowed_status:
+                identity_error = (
+                    "tracked repository content changed during review: "
+                    + json.dumps(disallowed_status, sort_keys=True)
+                )
+        if (
             identity_error is None
             and identity_after["head"] != identity_before["head"]
         ):

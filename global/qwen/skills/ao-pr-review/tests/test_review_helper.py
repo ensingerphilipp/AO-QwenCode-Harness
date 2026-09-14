@@ -2579,6 +2579,17 @@ class TestEvidenceAndLocking(HelperBase):
             (self.repo / "app.go").read_text(encoding="utf-8"),
         )
 
+    def test_gitignore_mutation_is_allowed(self):
+        (self.repo / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
+        self.git("add", ".gitignore")
+        self.git("commit", "-m", "track gitignore")
+        self.setup_success(mutate_tracked_file=self.repo / ".gitignore")
+        result = self.run_helper("5", VALID_SHA)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        doc = self.read_result()
+        self.assertEqual(doc["disposition"], "pass")
+        self.assertEqual(doc["localIdentityAfter"]["trackedStatus"], [" M .gitignore"])
+
     def test_untracked_review_artifacts_are_allowed(self):
         self.setup_success(
             create_untracked_file=self.repo / "qwen-artifact.tmp"
