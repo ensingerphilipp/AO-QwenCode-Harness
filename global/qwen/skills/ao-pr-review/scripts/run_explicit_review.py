@@ -1101,6 +1101,86 @@ def validate_findings(findings: list) -> list:
     return errors
 
 
+def snapshot_review_artifacts(toplevel: str) -> dict:
+    """Hash regular top-level Qwen review artifacts for change detection.
+
+    The snapshot is optional evidence for the narrow missing-reportPath
+    recovery. Symlinks and nested files are never recovery candidates.
+    """
+    reviews_dir = Path(toplevel) / ".qwen" / "reviews"
+    if not reviews_dir.exists():
+        return {}
+    if reviews_dir.is_symlink() or not reviews_dir.is_dir():
+        raise OSError(".qwen/reviews is not a real directory")
+    snapshot = {}
+    for path in reviews_dir.iterdir():
+        st = os.lstat(path)
+        if not stat.S_ISREG(st.st_mode) or path.suffix not in (".md", ".json"):
+            continue
+        snapshot[path.name] = sha256_file(path)
+    return snapshot
+
+
+def recover_missing_report_artifacts(
+    wrapper,
+    toplevel: str,
+    before_snapshot,
+    pr_number: int,
+    selected_effort: str,
+):
+    """Recover Qwen's known non-canonical Step-8 artifact naming failure.
+
+    Recovery is allowed only when reportPath is the wrapper's sole contract
+    error and exactly one Markdown file plus one companion JSON file changed
+    during this native run. The companion must validate fully, point at that
+    Markdown file, and agree with the wrapper verdict.
+    """
+    report_path_error = (
+        "wrapper reportPath is not a non-empty string ending in .md"
+    )
+    if validate_wrapper(wrapper) != [report_path_error]:
+        return None
+    if before_snapshot is None:
+        return None
+    try:
+        after_snapshot = snapshot_review_artifacts(toplevel)
+    except OSError:
+        return None
+    changed = {
+        name
+        for name, digest in after_snapshot.items()
+        if before_snapshot.get(name) != digest
+    }
+    markdown_names = sorted(name for name in changed if name.endswith(".md"))
+    companion_names = sorted(name for name in changed if name.endswith(".json"))
+    if len(markdown_names) != 1 or len(companion_names) != 1:
+        return None
+
+    reviews_dir = Path(toplevel) / ".qwen" / "reviews"
+    report_src = reviews_dir / markdown_names[0]
+    companion_src = reviews_dir / companion_names[0]
+    try:
+        companion = json.loads(companion_src.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if validate_companion(companion, pr_number, selected_effort):
+        return None
+    findings = companion.get("findings")
+    if not isinstance(findings, list) or validate_findings(findings):
+        return None
+
+    expected_markdown_path = f".qwen/reviews/{markdown_names[0]}"
+    if companion.get("markdownReportPath") != expected_markdown_path:
+        return None
+    verdict = companion.get("verdict")
+    if not isinstance(verdict, dict):
+        return None
+    for field in ("event", "baseEvent", "cappedBy"):
+        if wrapper.get(field) != verdict.get(field):
+            return None
+    return report_src, companion_src
+
+
 def compute_disposition(
     *,
     expected: str,
@@ -2087,6 +2167,12 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             "--approval-mode", "yolo",
             "--timeout-minutes", str(timeout_minutes),
         ]
+        try:
+            review_artifacts_before = snapshot_review_artifacts(toplevel)
+        except OSError:
+            # Native reportPath remains authoritative. An unreadable baseline
+            # only disables the narrow compatibility recovery below.
+            review_artifacts_before = None
         native_review_started = time.time()
         review_env = os.environ.copy()
         review_env.update(
@@ -2185,11 +2271,23 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             )
 
         wrapper = extract_wrapper(review_proc.stdout)
+        recovered_companion_src = None
         if wrapper is None:
             validation_errors.append(
                 "no wrapper JSON object found in the current qwen stdout"
             )
         else:
+            recovered = recover_missing_report_artifacts(
+                wrapper,
+                toplevel,
+                review_artifacts_before,
+                pr_number,
+                selected_effort,
+            )
+            if recovered is not None:
+                report_src, recovered_companion_src = recovered
+                wrapper = dict(wrapper)
+                wrapper["reportPath"] = str(report_src)
             validation_errors.extend(validate_wrapper(wrapper))
             if isinstance(wrapper.get("completed"), bool):
                 ctx["completed"] = wrapper["completed"]
@@ -2208,7 +2306,11 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                         f"reportPath file not found: {report_path}"
                     )
                 if report_path.endswith(".md"):
-                    companion_src = Path(report_path[: -len(".md")] + ".json")
+                    companion_src = (
+                        recovered_companion_src
+                        if recovered_companion_src is not None
+                        else Path(report_path[: -len(".md")] + ".json")
+                    )
                     if companion_src.is_file():
                         try:
                             copy_bytes(companion_src, run_dir / "review.json")

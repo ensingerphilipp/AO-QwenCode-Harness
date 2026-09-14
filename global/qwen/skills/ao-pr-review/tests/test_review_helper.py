@@ -129,13 +129,15 @@ def main():
         report_dir = state.get("report_dir")
         if report_dir:
             os.makedirs(report_dir, exist_ok=True)
-            with open(os.path.join(report_dir, "report.md"), "w", encoding="utf-8") as f:
+            report_md_name = state.get("report_md_name", "report.md")
+            report_json_name = state.get("report_json_name", "report.json")
+            with open(os.path.join(report_dir, report_md_name), "w", encoding="utf-8") as f:
                 f.write(state.get("report_md_content", "# review\n"))
             if state.get("report_json_raw") is not None:
-                with open(os.path.join(report_dir, "report.json"), "w", encoding="utf-8") as f:
+                with open(os.path.join(report_dir, report_json_name), "w", encoding="utf-8") as f:
                     f.write(state["report_json_raw"])
             elif "report_json_content" in state:
-                with open(os.path.join(report_dir, "report.json"), "w", encoding="utf-8") as f:
+                with open(os.path.join(report_dir, report_json_name), "w", encoding="utf-8") as f:
                     json.dump(state["report_json_content"], f)
         if state.get("mutate_tracked_file"):
             with open(state["mutate_tracked_file"], "a", encoding="utf-8") as f:
@@ -373,7 +375,8 @@ class HelperBase(unittest.TestCase):
                  qwen_exit=0, qwen_version="qwen 0.22.3", qwen_stderr="",
                  mutate_tracked_file=None, create_untracked_file=None,
                  mutate_and_commit=None, delete_git_dir=None,
-                 switch_branch=None, report_dir=None, sleep_seconds=None):
+                 switch_branch=None, report_dir=None, sleep_seconds=None,
+                 report_md_name="report.md", report_json_name="report.json"):
         state = {
             "qwen_version": qwen_version,
             "qwen_exit": qwen_exit,
@@ -382,6 +385,8 @@ class HelperBase(unittest.TestCase):
                 Path(report_dir) if report_dir is not None else self.report_dir
             ),
             "report_md_content": report_md_content,
+            "report_md_name": report_md_name,
+            "report_json_name": report_json_name,
         }
         if report_json_raw is not None:
             state["report_json_raw"] = report_json_raw
@@ -1730,6 +1735,80 @@ class TestNativeCommand(HelperBase):
         self.assertEqual(result.returncode, 3)
         doc = self.read_result()
         self.assertIn("timedOut is not false", doc["error"])
+
+    def test_missing_report_path_recovers_one_changed_artifact_pair(self):
+        reviews_dir = self.repo / ".qwen" / "reviews"
+        companion = make_companion(
+            markdown_report_path=".qwen/reviews/pr-5-report.md"
+        )
+        self.set_qwen(
+            wrapper_stdout=json.dumps(make_wrapper(report_path=None)),
+            report_json_content=companion,
+            report_dir=reviews_dir,
+            report_md_name="pr-5-report.md",
+            report_json_name="pr-5.json",
+        )
+        result = self.run_helper("5", VALID_SHA)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        run_dir = self.run_dirs()[-1]
+        self.assertEqual(
+            (run_dir / "review.md").read_text(encoding="utf-8"),
+            "# review report\n",
+        )
+        self.assertEqual(
+            json.loads((run_dir / "review.json").read_text(encoding="utf-8")),
+            companion,
+        )
+        native = json.loads(
+            (run_dir / "qwen-run.json").read_text(encoding="utf-8")
+        )
+        self.assertIsNone(native["reportPath"])
+
+    def test_missing_report_path_does_not_recover_unchanged_artifacts(self):
+        reviews_dir = self.repo / ".qwen" / "reviews"
+        reviews_dir.mkdir(parents=True)
+        companion = make_companion(
+            markdown_report_path=".qwen/reviews/pr-5-report.md"
+        )
+        (reviews_dir / "pr-5-report.md").write_text(
+            "# review report\n", encoding="utf-8"
+        )
+        (reviews_dir / "pr-5.json").write_text(
+            json.dumps(companion), encoding="utf-8"
+        )
+        self.set_qwen(
+            wrapper_stdout=json.dumps(make_wrapper(report_path=None)),
+            report_json_content=companion,
+            report_dir=reviews_dir,
+            report_md_name="pr-5-report.md",
+            report_json_name="pr-5.json",
+        )
+        result = self.run_helper("5", VALID_SHA)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertIn(
+            "wrapper reportPath is not a non-empty string ending in .md",
+            self.read_result()["error"],
+        )
+
+    def test_missing_report_path_does_not_recover_ambiguous_artifacts(self):
+        reviews_dir = self.repo / ".qwen" / "reviews"
+        companion = make_companion(
+            markdown_report_path=".qwen/reviews/pr-5-report.md"
+        )
+        self.set_qwen(
+            wrapper_stdout=json.dumps(make_wrapper(report_path=None)),
+            report_json_content=companion,
+            report_dir=reviews_dir,
+            report_md_name="pr-5-report.md",
+            report_json_name="pr-5.json",
+            create_untracked_file=reviews_dir / "extra.md",
+        )
+        result = self.run_helper("5", VALID_SHA)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertIn(
+            "wrapper reportPath is not a non-empty string ending in .md",
+            self.read_result()["error"],
+        )
 
     def test_missing_report_file_is_review_error(self):
         self.setup_success(
