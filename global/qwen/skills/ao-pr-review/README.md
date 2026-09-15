@@ -1,11 +1,11 @@
-# ao-pr-review — v0.3.5
+# ao-pr-review — v0.3.6
 
 A host-global Qwen Code Skill that runs **one explicit, non-posting native
 Qwen semantic review** of an exact GitHub PR head after required
 deterministic CI passes (required checks excluding only the exact context
 `ao/semantic-review`).
 
-- `VERSION=0.3.5`
+- `VERSION=0.3.6`
 - `contractVersion=6` (result/finding contract)
 - `effortPolicyVersion=2` (deterministic medium/high selection with validated project extensions)
 
@@ -118,7 +118,7 @@ disposition's native exit code: 0 pass, 3 review_error, 4 stale, 5 blocked,
 
   ```text
   {"type":"keepalive","elapsedSeconds":<monotonic-seconds>}
-  {"type":"heartbeat","elapsedSeconds":<monotonic-seconds>,"stage":"<optional-stage>","agentsStarted":<optional-int>,"agentsCompleted":<optional-int>,"lastActivityAt":"<optional-iso-time>"}
+  {"type":"heartbeat","elapsedSeconds":<monotonic-seconds>,"stage":"<optional-stage>","progressMode":"<pre-fanout|direct-agent|workflow>","agentsStarted":<optional-int>,"agentsCompleted":<optional-int>,"agentsActive":<optional-int>,"lastActivityAt":"<optional-iso-time>"}
   {"type":"complete","resultJson":"<abs-path>","disposition":"<d>",
    "semanticExitCode":<0|3|4|5|6>,"reviewKey":"owner/repo#PR@sha",
    "attemptId":"<run-dir-name>"}
@@ -191,7 +191,7 @@ the validated `result.json` named by the `complete` event.
 ## Layout
 
 ```text
-VERSION                                   0.3.5
+VERSION                                   0.3.6
 SKILL.md                                  skill definition (operator or dispatched AO reviewer)
 scripts/run_explicit_review.py            deterministic helper (Python 3, stdlib only)
 references/contract.md                    Qwen 0.22.3 artifact + result contract
@@ -211,7 +211,7 @@ Install an exact copy of this tree (excluding `.git`) at:
 with directories `0755`, Markdown/JSON/Python files `0644`, and
 `scripts/run_explicit_review.py` `0755`.
 
-The versioned ZIP (e.g. `ao-pr-review-v0.3.5.zip`, built with
+The versioned ZIP (e.g. `ao-pr-review-v0.3.6.zip`, built with
 `git archive` from the committed HEAD) is a **source archive**: it
 captures the committed tree and records no live state. Installation from
 it is a plain copy plus an explicit restoration of executable mode

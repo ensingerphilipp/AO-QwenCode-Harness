@@ -1487,6 +1487,7 @@ class ReviewProgress:
         self._transcript = None
         self._offset = 0
         self._agent_calls = set()
+        self._workflow_calls = set()
         self._last_activity = None
 
     def _bind_once(self):
@@ -1527,11 +1528,15 @@ class ReviewProgress:
                 if not isinstance(part, dict):
                     continue
                 call = part.get("functionCall")
-                if not isinstance(call, dict) or call.get("name") != "agent":
+                if not isinstance(call, dict):
                     continue
                 call_id = call.get("id")
-                if isinstance(call_id, str) and call_id:
+                if not isinstance(call_id, str) or not call_id:
+                    continue
+                if call.get("name") == "agent":
                     self._agent_calls.add(call_id)
+                elif call.get("name") == "workflow":
+                    self._workflow_calls.add(call_id)
 
     def _subagent_dir(self):
         if self._transcript is None:
@@ -1570,11 +1575,18 @@ class ReviewProgress:
     def _subagent_progress(self):
         directory = self._subagent_dir()
         if directory is None:
-            return 0
+            return 0, 0
         try:
-            journals = list(directory.glob("agent-review-agent-*.jsonl"))
+            journals = {
+                path
+                for pattern in (
+                    "agent-review-agent-*.jsonl",
+                    "agent-workflow-agent-*.jsonl",
+                )
+                for path in directory.glob(pattern)
+            }
         except OSError:
-            return 0
+            return 0, 0
         completed = 0
         for journal in journals:
             done, timestamp = self._journal_is_complete(journal)
@@ -1582,7 +1594,7 @@ class ReviewProgress:
                 self._last_activity = timestamp
             if done:
                 completed += 1
-        return min(completed, len(self._agent_calls))
+        return len(journals), completed
 
     def snapshot(self):
         try:
@@ -1604,18 +1616,28 @@ class ReviewProgress:
             self._offset += consumed
         except (OSError, ValueError):
             return None
-        started = len(self._agent_calls)
-        completed = self._subagent_progress()
+        journal_started, journal_completed = self._subagent_progress()
+        started = max(len(self._agent_calls), journal_started)
+        completed = min(journal_completed, started)
+        active = max(started - completed, 0)
         if started == 0:
             stage = "preparing"
-        elif completed < started:
+        elif active:
             stage = "finder_fanout"
         else:
             stage = "post_fanout"
+        if self._workflow_calls:
+            progress_mode = "workflow"
+        elif self._agent_calls:
+            progress_mode = "direct-agent"
+        else:
+            progress_mode = "pre-fanout"
         result = {
             "stage": stage,
+            "progressMode": progress_mode,
             "agentsStarted": started,
             "agentsCompleted": completed,
+            "agentsActive": active,
         }
         if self._last_activity is not None:
             result["lastActivityAt"] = self._last_activity

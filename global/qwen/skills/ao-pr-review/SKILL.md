@@ -162,7 +162,8 @@ When a monitor notification for this review's monitor ID arrives:
   take any action; stop.
 - `heartbeat` — nonterminal. Report `REVIEW RUNNING` with the elapsed time.
   When the event includes validated bounded progress fields, also report the
-  stage and `agentsCompleted/agentsStarted`. Do not read the raw Qwen transcript
+  stage, progress mode, and `agentsCompleted/agentsStarted` plus `agentsActive`.
+  Do not read the raw Qwen transcript
   yourself, infer findings, or take any action from progress. Then stop.
 - `complete` — read and validate the exact `resultJson` path from the event
   (re-read it from disk and check its `reviewKey`, `attemptId`, `disposition`,

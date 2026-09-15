@@ -376,7 +376,7 @@ events are:
 
 ```text
 {"type":"keepalive","elapsedSeconds":<monotonic-seconds>}
-{"type":"heartbeat","elapsedSeconds":<monotonic-seconds>,"stage":"<optional-stage>","agentsStarted":<optional-int>,"agentsCompleted":<optional-int>,"lastActivityAt":"<optional-iso-time>"}
+{"type":"heartbeat","elapsedSeconds":<monotonic-seconds>,"stage":"<optional-stage>","progressMode":"<pre-fanout|direct-agent|workflow>","agentsStarted":<optional-int>,"agentsCompleted":<optional-int>,"agentsActive":<optional-int>,"lastActivityAt":"<optional-iso-time>"}
 {"type":"complete","resultJson":"<abs-path>","disposition":"<d>",
  "semanticExitCode":<0|3|4|5|6>,"reviewKey":"owner/repo#PR@sha",
  "attemptId":"<run-dir-name>"}
