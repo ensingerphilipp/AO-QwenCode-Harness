@@ -155,7 +155,7 @@ It then proposes project-specific contents for the baseline files without invent
 
 Files committed under `global/`, `templates/`, `lifecycle/`, `config/`, and `install/` are deployment artifacts, not drafts. They must be internally consistent, documented, testable, fail closed where safety or identity is uncertain, avoid hardcoded host/project identity, and be suitable for production deployment at the time they are committed.
 
-Historical checkpoints may document earlier decisions, but active architecture and deployment files are authoritative.
+Active architecture and deployment files are authoritative.
 
 ## Decision maintenance
 

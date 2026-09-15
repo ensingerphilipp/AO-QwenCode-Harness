@@ -253,7 +253,7 @@ For the full procedure, options, and ownership boundary, read [Installation and 
 | [`config/`](config/) | Machine-readable schemas. |
 | [`lifecycle/`](lifecycle/) | Project-neutral orchestrator worktree refresh. |
 | [`install/`](install/) | Idempotent host installation, initialization, migration, and verification. |
-| [`docs/`](docs/) | Architecture record, operating procedures, status, and historical checkpoints. |
+| [`docs/`](docs/) | Architecture record, operating procedures, and current status. |
 
 ## Verify this repository
 

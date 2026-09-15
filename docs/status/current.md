@@ -29,4 +29,4 @@ The temporary `ao-reboot-recovery` workaround is maintained only on the current 
 
 - L — DEFERRED FUTURE WORK: fresh-host/fresh-project end-to-end qualification; do not begin automatically after K
 
-Historical checkpoint documents are immutable records of earlier state and may describe superseded progress. This file is the current progress authority.
+This file is the current progress authority.
