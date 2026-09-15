@@ -1,6 +1,6 @@
 # Current Harness Implementation Status
 
-Last updated: 2026-09-07
+Last updated: 2026-09-15
 
 ## Completed
 
@@ -17,6 +17,7 @@ Last updated: 2026-09-07
 - J — host-independent installation and new-project registration
 - K — Premiumizearr-Nova migration, installed runtime verification, and accepted tracker-intake smoke qualification
 - Operator escape hatch — model-hidden manual `ao/semantic-review` status override packaged and managed as a host-global Skill
+- `ao-pr-review` v0.3.7 — Qwen-native review deadline ownership, 18-hour emergency outer guard, Qwen 0.23.4 workflow progress telemetry, and `max_events: 256` monitor capacity
 
 ## Latest qualification
 

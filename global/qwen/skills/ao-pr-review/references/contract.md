@@ -21,7 +21,7 @@ python3 <skill-dir>/scripts/run_explicit_review.py --monitor-envelope <PR-number
 python3 <skill-dir>/scripts/run_explicit_review.py help
 ```
 
-- Qwen Code 0.22.3 writes slash-command arguments verbatim to a
+- The supported Qwen Code runtime writes slash-command arguments verbatim to a
   session-private file and injects its path as
   `<skill-args-file>...</skill-args-file>`. The model passes only that path;
   it never reconstructs arguments from conversation.
@@ -189,7 +189,7 @@ The companion path is `reportPath` with its final `.md` replaced by `.json`.
 Native artifacts are copied into the run directory as `review.md` and
 `review.json`; raw files are preserved even when later validation fails.
 
-Required companion fields (full Qwen 0.22.3 shape):
+Required companion fields (supported native Qwen shape):
 
 ```text
 schemaVersion == 1   (exactly the integer 1; any other value, including
@@ -386,7 +386,7 @@ Monitor event rules:
 
 - Only protocol events are emitted — never finding text, native Qwen progress,
   or any externally supplied prose.
-- Qwen 0.23.0 hard-caps monitor idle timeout at 600000 ms. A fixed 480-second
+- Qwen Code hard-caps monitor idle timeout at 600000 ms. A fixed 480-second
   transport-only `keepalive` prevents idle termination and carries no semantic
   progress. Rich `heartbeat` events are emitted every 960 seconds; they always
   carry type and monotonic elapsed seconds and may additionally carry bounded

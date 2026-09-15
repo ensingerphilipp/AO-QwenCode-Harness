@@ -57,7 +57,7 @@ PROJECT_RISK_CONFIG_MAX_BYTES = 64 * 1024
 ARGS_FILE_MAX_BYTES = 4096
 PATCH_MAX_BYTES = 512 * 1024
 GH_TIMEOUT_SECONDS = 120
-# `qwen review run` always arms an outer timer and defaults to only 120 minutes.
+# `qwen review run` always enforces an outer limit and defaults to only 120 minutes.
 # Keep one non-policy emergency guard above Qwen's largest native 16-hour
 # review-plan wall; Qwen's own plan owns the actual review deadline and reserves.
 REVIEW_RUN_EMERGENCY_TIMEOUT_MINUTES = 18 * 60
@@ -435,7 +435,7 @@ def select_effort(requested, pr_view, patch, patch_error, project_risk=None):
 
 
 def native_timeout_plan(selected_effort: str):
-    """Return the emergency `review run` timer and wrapper timeout.
+    """Return the emergency `review run` guard and wrapper timeout.
 
     The selected effort does not change this outer guard. Qwen's captured
     review plan owns the actual review wall and its native reserve/floor.
@@ -797,7 +797,7 @@ def read_local_identity(toplevel: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Qwen 0.22.3 artifact validation (strict)
+# Native Qwen artifact validation (strict)
 # ---------------------------------------------------------------------------
 
 
@@ -928,7 +928,7 @@ def validate_markdown_report_path(path) -> list:
 
 
 def validate_companion(doc, pr_number: int, selected_effort: str) -> list:
-    """Strict validation aligned with the Qwen Code v0.22.3 canonical
+    """Strict validation aligned with the supported native Qwen canonical
     artifact parser. Unknown fields pass through unchecked and are
     preserved verbatim."""
     errors = []
@@ -995,7 +995,7 @@ def _validate_location(location, label: str) -> list:
 
 
 def validate_findings(findings: list) -> list:
-    """Strict finding validation aligned with the Qwen Code v0.22.3
+    """Strict finding validation aligned with the supported native Qwen
     canonical artifact parser. Unknown fields pass through unchecked and
     are preserved verbatim."""
     errors = []
@@ -2145,7 +2145,7 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             )
 
         # Exactly one native semantic review. `qwen review run` requires an
-        # outer timer; use an 18-hour emergency guard above Qwen's largest
+        # outer limit; use an 18-hour emergency guard above Qwen's largest
         # native 16-hour review-plan wall. Qwen's captured plan owns the actual
         # review deadline and its native verification/composition reserves.
         timeout_minutes, wrapper_timeout_seconds = native_timeout_plan(
@@ -2253,7 +2253,7 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             )
         ctx["localIdentityAfter"] = identity_after
 
-        # Strict Qwen 0.22.3 result validation.
+        # Strict native Qwen result validation.
         validation_errors = []
         ctx["qwenExitCode"] = review_proc.returncode
         if review_proc.returncode not in (0, 3):

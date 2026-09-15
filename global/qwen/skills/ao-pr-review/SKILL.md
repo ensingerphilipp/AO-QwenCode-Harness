@@ -51,9 +51,9 @@ Fail-closed argument handling (both paths):
   the invocation carried no argument file and stop — never retype,
   reconstruct, or guess arguments.
 
-## Mandatory argument handling (Qwen Code 0.22.3)
+## Mandatory argument handling
 
-Qwen Code 0.22.3 writes slash-command arguments verbatim to a session-private
+The supported Qwen Code runtime writes slash-command arguments verbatim to a session-private
 file and injects its path into the user message as:
 
 ```text
@@ -93,7 +93,7 @@ and stop.
 Every real review launches the helper ONLY through Qwen's native `monitor`
 tool. Do not use `run_shell_command`: a foreground shell is capped at
 600000 ms, which a real review exceeds, and a background shell
-settles silently in Qwen Code 0.22.3 — it is observable through `/tasks`
+settles silently in the supported Qwen Code runtime — it is observable through `/tasks`
 and its output file, but it does not push a completion notification
 that resumes the agent, so a reviewer Task can launch a review and go
 idle without ever processing the result. The `monitor` tool is the
@@ -119,7 +119,7 @@ max_events:
 Do not add `&`, `nohup`, a foreground shell call, a second watcher,
 a polling loop, or a scheduler. There is no shell timeout parameter;
 liveness is handled inside the helper by a fixed 480-second transport
-`keepalive` event that stays below Qwen 0.23.0's hard 600000 ms monitor idle
+`keepalive` event that stays below Qwen Code's hard 600000 ms monitor idle
 timeout while a long review runs.
 
 The monitor-envelope transport streams only bounded, deterministic protocol
@@ -254,7 +254,7 @@ result is the stable identity used for deduplication.
   does not push a completion notification; the monitor transport is the
   supported notification mechanism, and its result is retrieved explicitly
   from the validated `result.json`.
-- Qwen 0.23.0 hard-caps monitor `idle_timeout_ms` at 600000, so a fixed
+- Qwen Code hard-caps monitor `idle_timeout_ms` at 600000, so a fixed
   480-second transport-only `keepalive` prevents idle termination. It carries
   no semantic progress and is not a review controller.
 - Rich observational `heartbeat` events are emitted every 960 seconds. The

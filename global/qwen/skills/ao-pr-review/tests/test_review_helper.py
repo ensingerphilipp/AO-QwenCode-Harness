@@ -123,7 +123,7 @@ def main():
     log(argv)
     state = load()
     if argv == ["--version"]:
-        print(state.get("qwen_version", "qwen 0.22.3"))
+        print(state.get("qwen_version", "qwen 0.23.4"))
         sys.exit(0)
     if argv[:2] == ["review", "run"]:
         report_dir = state.get("report_dir")
@@ -186,7 +186,7 @@ def default_counts():
     }
 
 
-# v0.22.3 required finding fields that tests do not care about; filled in
+# Native Qwen required finding fields that tests do not care about; filled in
 # with valid defaults so tests can stay focused on the field under test.
 FINDING_DEFAULTS = {
     "source": "review",
@@ -372,7 +372,7 @@ class HelperBase(unittest.TestCase):
 
     def set_qwen(self, wrapper_stdout=None, report_md_content="# review report\n",
                  report_json_content=SKIP, report_json_raw=None,
-                 qwen_exit=0, qwen_version="qwen 0.22.3", qwen_stderr="",
+                 qwen_exit=0, qwen_version="qwen 0.23.4", qwen_stderr="",
                  mutate_tracked_file=None, create_untracked_file=None,
                  mutate_and_commit=None, delete_git_dir=None,
                  switch_branch=None, report_dir=None, sleep_seconds=None,
@@ -1603,7 +1603,7 @@ class TestEffortPolicyEndToEnd(HelperBase):
 
 
 # ---------------------------------------------------------------------------
-# Native command and Qwen 0.22.3 output validation
+# Native command and output validation
 # ---------------------------------------------------------------------------
 
 
@@ -1621,7 +1621,7 @@ class TestNativeCommand(HelperBase):
                 "--json",
                 "--fail-on", "request-changes",
                 "--approval-mode", "yolo",
-                "--timeout-minutes", "240",
+                "--timeout-minutes", "1080",
             ],
         )
 
@@ -2604,7 +2604,7 @@ class TestEvidenceAndLocking(HelperBase):
         self.assertEqual(doc["contractVersion"], 6)
         self.assertEqual(doc["invocationTransport"], "direct")
         self.assertEqual(doc["semanticExitCode"], 0)
-        self.assertEqual(doc["qwenVersion"], "qwen 0.22.3")
+        self.assertEqual(doc["qwenVersion"], "qwen 0.23.4")
 
     def test_artifact_hashes_recorded(self):
         self.setup_success()
@@ -2936,7 +2936,7 @@ class TestLocalIdentityGuard(HelperBase):
 
 
 # ---------------------------------------------------------------------------
-# Full Qwen 0.22.3 companion shape validation (fail-closed)
+# Full native Qwen companion shape validation (fail-closed)
 # ---------------------------------------------------------------------------
 
 
@@ -3417,7 +3417,7 @@ class TestDirectModeExitCodes(HelperBase):
 
 
 class TestBackgroundEnvelopeExits(HelperBase):
-    """Qwen 0.22.3 marks a background shell task `completed` only on
+    """Qwen Code marks a background shell task `completed` only on
     exit 0, so every trustworthy semantic disposition must exit 0 under
     the envelope, carrying its disposition in the validated result."""
 

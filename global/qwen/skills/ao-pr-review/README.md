@@ -51,7 +51,7 @@ request (`auto` by default, or `medium`/`high`):
    always passed for PR reviews: it requests native continuation; Qwen confirms
    whether state was actually resumed and may otherwise fall back to a fresh review.
    A native or wrapper timeout remains `review_error`. `--comment` is never passed.
-6. Strictly validates the full Qwen 0.22.3 wrapper + companion shape
+6. Strictly validates the supported native Qwen wrapper + companion shape
    (verdict line, required counts, report path, per-finding required and
    optional renderer fields) and the exact finding vocabulary, computes a
    disposition (`pass`, `blocked`, `needs_human`, `stale`, `review_error`),
@@ -124,7 +124,7 @@ disposition's native exit code: 0 pass, 3 review_error, 4 stale, 5 blocked,
   {"type":"transport_error","semanticExitCode":<2|3>}
   ```
 
-  Qwen 0.23.0 hard-caps monitor idle timeout at 600000 ms, so a fixed
+  Qwen Code hard-caps monitor idle timeout at 600000 ms, so a fixed
   480-second transport-only `keepalive` prevents idle termination. A richer
   960-second `heartbeat` may carry bounded observational stage/agent-count
   metadata parsed mechanically from the inner Qwen transcript and subagent journals; `complete` is emitted only after the current-run
@@ -193,7 +193,7 @@ the validated `result.json` named by the `complete` event.
 VERSION                                   0.3.7
 SKILL.md                                  skill definition (operator or dispatched AO reviewer)
 scripts/run_explicit_review.py            deterministic helper (Python 3, stdlib only)
-references/contract.md                    Qwen 0.22.3 artifact + result contract
+references/contract.md                    native Qwen artifact + result contract
 references/policy.md                      effort policy v2 + disposition policy
 tests/test_review_helper.py               unit tests (fake gh/qwen, no network)
 tests/fixtures/qwen-review-artifact-v1.json  official-shaped companion fixture
