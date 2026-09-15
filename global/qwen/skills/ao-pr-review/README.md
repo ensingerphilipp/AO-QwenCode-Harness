@@ -128,7 +128,7 @@ disposition's native exit code: 0 pass, 3 review_error, 4 stale, 5 blocked,
   Qwen 0.23.0 hard-caps monitor idle timeout at 600000 ms, so a fixed
   480-second transport-only `keepalive` prevents idle termination. A richer
   960-second `heartbeat` may carry bounded observational stage/agent-count
-  metadata parsed mechanically from the inner Qwen transcript; `complete` is emitted only after the current-run
+  metadata parsed mechanically from the inner Qwen transcript and subagent journals; `complete` is emitted only after the current-run
   `result.json` is durably persisted and revalidated for this exact
   invocation, with metadata that exactly matches that result; heartbeat
   generation stops before the terminal event; cancellation never fabricates

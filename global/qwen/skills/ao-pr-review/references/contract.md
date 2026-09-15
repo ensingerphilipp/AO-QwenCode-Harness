@@ -391,8 +391,8 @@ Monitor event rules:
   transport-only `keepalive` prevents idle termination and carries no semantic
   progress. Rich `heartbeat` events are emitted every 960 seconds; they always
   carry type and monotonic elapsed seconds and may additionally carry bounded
-  observational `stage`, agent counts, and last-activity timestamp. The
-  combined event count over the ten-hour high-effort budget stays below
+  observational `stage`, `progressMode`, agent started/completed/active counts,
+  and last-activity timestamp. The combined event count over the ten-hour high-effort budget stays below
   monitor `max_events: 128`.
 - `complete` is emitted only after the current-run `result.json` is durably
   persisted and revalidated for this exact invocation, and its metadata
