@@ -138,22 +138,21 @@ qwen review run <canonical-PR-URL> \
   --json \
   --fail-on request-changes \
   --approval-mode yolo \
-  --timeout-minutes <240|600>
+  --timeout-minutes 1080
 ```
 
-The native timeout is deterministic per selected effort (v0.2.3):
-`medium` -> 240 minutes, `high` -> 600 minutes. The Python
-`subprocess.run` wrapper timeout is the native budget plus 600 seconds of
+Qwen's captured review plan owns the actual review wall and its native
+reverse-audit/verification reserve policy. The helper does not inject any
+`QWEN_REVIEW_DEADLINE_*` overrides. Because `qwen review run` always arms an
+outer timer and otherwise defaults to 120 minutes, the helper passes one
+1080-minute emergency guard above Qwen's largest native 16-hour plan wall;
+the Python `subprocess.run` wrapper timeout is that guard plus 600 seconds of
 cleanup grace. Both values are persisted in `result.json` as
 `reviewTimeoutMinutes` and `wrapperTimeoutSeconds`. `--resume` is always
-passed for PR reviews; it requests continuation, and Qwen attempts resume and continues only when its persisted review state
-still matches and otherwise falls back to a fresh review. The helper exports
-`QWEN_REVIEW_DEADLINE_EPOCH` equal to the native hard-timeout epoch plus
-`QWEN_REVIEW_DEADLINE_RESERVE_SECONDS=3600` and
-`QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS=1200`, allowing Qwen to stop
-open-ended audit work while enough time remains to verify and compose. A
-native timeout (wrapper `timedOut`, or an exit that is neither 0 nor 3) or a
-wrapper timeout (the subprocess is killed) remains `review_error`.
+passed for PR reviews; it requests continuation, and Qwen attempts resume and
+continues only when its persisted review state still matches and otherwise
+falls back to a fresh review. A native timeout (wrapper `timedOut`, or an exit
+that is neither 0 nor 3) or a wrapper timeout remains `review_error`.
 
 `--comment` is forbidden. `qwen --version` is called once for evidence and
 is not a semantic review.
@@ -392,8 +391,8 @@ Monitor event rules:
   progress. Rich `heartbeat` events are emitted every 960 seconds; they always
   carry type and monotonic elapsed seconds and may additionally carry bounded
   observational `stage`, `progressMode`, agent started/completed/active counts,
-  and last-activity timestamp. The combined event count over the ten-hour high-effort budget stays below
-  monitor `max_events: 128`.
+  and last-activity timestamp. The combined event count across the 18-hour emergency guard stays below
+  monitor `max_events: 256`.
 - `complete` is emitted only after the current-run `result.json` is durably
   persisted and revalidated for this exact invocation, and its metadata
   (`resultJson`, `disposition`, `semanticExitCode`, `reviewKey`, `attemptId`)
@@ -480,7 +479,7 @@ tracked application changes.
 
 Every real review launches the helper through Qwen's native `monitor` tool
 in monitor-envelope transport, with the current repository worktree as
-`directory`, `idle_timeout_ms: 600000`, and `max_events: 128`; the command
+`directory`, `idle_timeout_ms: 600000`, and `max_events: 256`; the command
 is `python3 <skill-dir>/scripts/run_explicit_review.py --monitor-envelope
 --args-file <injected-path>`, never run in the foreground, never through
 `run_shell_command`, and never with a trailing `&`, `nohup`, a second

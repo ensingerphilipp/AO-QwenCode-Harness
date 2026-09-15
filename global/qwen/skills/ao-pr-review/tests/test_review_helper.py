@@ -2791,7 +2791,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.6")
+        self.assertEqual(version, "0.3.7")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3150,103 +3150,69 @@ class TestCompanionShapeValidation(HelperBase):
 
 
 # ---------------------------------------------------------------------------
-# v0.2.3: effort-based native review timeout
+# v0.3.7: Qwen-native review wall + emergency outer guard
 # ---------------------------------------------------------------------------
 
 
 class TestNativeTimeoutPolicy(unittest.TestCase):
-    def test_medium_selects_240_minutes(self):
+    def test_emergency_guard_is_18_hours_for_both_efforts(self):
         module = load_helper_module()
-        self.assertEqual(module.NATIVE_TIMEOUT_MINUTES["medium"], 240)
-
-    def test_high_selects_600_minutes(self):
-        module = load_helper_module()
-        self.assertEqual(module.NATIVE_TIMEOUT_MINUTES["high"], 600)
-
-    def test_medium_wrapper_timeout_is_native_plus_600_seconds(self):
-        module = load_helper_module()
-        minutes, wrapper_seconds = module.native_timeout_plan("medium")
-        self.assertEqual(minutes, 240)
-        self.assertEqual(wrapper_seconds, 240 * 60 + 600)
-
-    def test_high_wrapper_timeout_is_native_plus_600_seconds(self):
-        module = load_helper_module()
-        minutes, wrapper_seconds = module.native_timeout_plan("high")
-        self.assertEqual(minutes, 600)
-        self.assertEqual(wrapper_seconds, 600 * 60 + 600)
+        self.assertEqual(module.REVIEW_RUN_EMERGENCY_TIMEOUT_MINUTES, 1080)
+        for effort in ("medium", "high"):
+            minutes, wrapper_seconds = module.native_timeout_plan(effort)
+            self.assertEqual(minutes, 1080)
+            self.assertEqual(wrapper_seconds, 1080 * 60 + 600)
 
     def test_wrapper_grace_is_600_seconds(self):
         module = load_helper_module()
         self.assertEqual(module.WRAPPER_CLEANUP_GRACE_SECONDS, 600)
 
-    def test_soft_deadline_policy_is_explicit(self):
-        module = load_helper_module()
-        self.assertEqual(module.REVIEW_DEADLINE_RESERVE_SECONDS, 3600)
-        self.assertEqual(module.REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS, 1200)
-        env = module.review_deadline_env(600, 1000.75)
-        self.assertEqual(env["QWEN_REVIEW_DEADLINE_EPOCH"], str(int(1000.75 + 600 * 60)))
-        self.assertEqual(env["QWEN_REVIEW_DEADLINE_RESERVE_SECONDS"], "3600")
-        self.assertEqual(env["QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS"], "1200")
-
-    def test_python_timeout_uses_wrapper_timeout(self):
+    def test_helper_does_not_define_deadline_overrides(self):
         source = HELPER.read_text(encoding="utf-8")
+        self.assertNotIn("REVIEW_DEADLINE_RESERVE_SECONDS", source)
+        self.assertNotIn("REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS", source)
+        self.assertNotIn("def review_deadline_env", source)
         self.assertIn("timeout=wrapper_timeout_seconds", source)
-        self.assertIn("minutes * 60 + WRAPPER_CLEANUP_GRACE_SECONDS", source)
 
 
 class TestNativeTimeoutEndToEnd(HelperBase):
-    def assert_timeout_wiring(self, doc, flag_value):
+    def assert_timeout_wiring(self, doc):
         argv = self.qwen_review_argv()
-        self.assertEqual(
-            argv[argv.index("--timeout-minutes") + 1], str(flag_value)
-        )
+        self.assertEqual(argv[argv.index("--timeout-minutes") + 1], "1080")
         self.assertIn("--resume", argv)
-        self.assertEqual(doc["reviewTimeoutMinutes"], flag_value)
-        self.assertEqual(doc["wrapperTimeoutSeconds"], flag_value * 60 + 600)
+        self.assertEqual(doc["reviewTimeoutMinutes"], 1080)
+        self.assertEqual(doc["wrapperTimeoutSeconds"], 1080 * 60 + 600)
         review_entry = next(
             e for e in self.invocation_log()
             if e["exe"] == "qwen" and e["argv"][:2] == ["review", "run"]
         )
-        self.assertEqual(review_entry["deadlineReserve"], "3600")
-        self.assertEqual(review_entry["deadlineComposeFloor"], "1200")
-        self.assertIsNotNone(review_entry["deadlineEpoch"])
+        self.assertIsNone(review_entry["deadlineReserve"])
+        self.assertIsNone(review_entry["deadlineComposeFloor"])
+        self.assertIsNone(review_entry["deadlineEpoch"])
 
-    def test_medium_run_passes_240_minutes(self):
+    def test_medium_run_uses_emergency_guard(self):
         self.setup_success()
         result = self.run_helper("5", VALID_SHA)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         doc = self.read_result()
         self.assertEqual(doc["selectedEffort"], "medium")
-        self.assert_timeout_wiring(doc, 240)
+        self.assert_timeout_wiring(doc)
 
-    def test_high_run_passes_600_minutes(self):
+    def test_high_run_uses_same_emergency_guard(self):
         self.setup_success(companion=make_companion(effort="high"))
         result = self.run_helper("5", VALID_SHA, "high")
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         doc = self.read_result()
         self.assertEqual(doc["selectedEffort"], "high")
-        self.assert_timeout_wiring(doc, 600)
+        self.assert_timeout_wiring(doc)
 
-    def test_auto_uses_medium_timeout_when_medium_selected(self):
+    def test_auto_effort_does_not_change_emergency_guard(self):
         self.setup_success()
         result = self.run_helper("5", VALID_SHA, "auto")
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         doc = self.read_result()
         self.assertEqual(doc["requestedEffort"], "auto")
-        self.assertEqual(doc["selectedEffort"], "medium")
-        self.assert_timeout_wiring(doc, 240)
-
-    def test_auto_uses_high_timeout_when_high_selected(self):
-        pr = self.default_pr_doc()
-        pr["files"] = [{"path": "go.mod"}]
-        pr["changedFiles"] = 1
-        self.setup_success(pr=pr, companion=make_companion(effort="high"))
-        result = self.run_helper("5", VALID_SHA, "auto")
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        doc = self.read_result()
-        self.assertEqual(doc["requestedEffort"], "auto")
-        self.assertEqual(doc["selectedEffort"], "high")
-        self.assert_timeout_wiring(doc, 600)
+        self.assert_timeout_wiring(doc)
 
 
 # ---------------------------------------------------------------------------
@@ -3302,7 +3268,7 @@ class TestMonitorExecutionDocs(unittest.TestCase):
         self.assertIn("idle_timeout_ms:", section)
         self.assertIn("600000", section)
         self.assertIn("max_events:", section)
-        self.assertIn("128", section)
+        self.assertIn("256", section)
         self.assertIn("the current repository worktree", section)
 
     def test_no_second_watcher_or_scheduler(self):
@@ -3840,7 +3806,7 @@ class TestEnvelopeDocs(unittest.TestCase):
             "merge",
             "schedule or poll",
             "idle_timeout_ms: 600000",
-            "max_events: 128",
+            "max_events: 256",
             "agentRules",
             "orchestratorRules",
             "reviewKey",
@@ -3854,7 +3820,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.6", readme)
+        self.assertIn("VERSION=0.3.7", readme)
         self.assertIn("contractVersion=6", readme)
 
 
@@ -4273,12 +4239,12 @@ class TestMonitorSession(unittest.TestCase):
         self.assertEqual(session._interval, 960)
         self.assertEqual(session._keepalive_interval, 480)
 
-    def test_high_effort_budget_fits_below_max_events(self):
+    def test_emergency_guard_fits_below_max_events(self):
         module = load_helper_module()
-        high_effort_budget = 10 * 3600  # 600-minute budget + grace
-        events = -(-high_effort_budget
-                   // module.MONITOR_KEEPALIVE_SECONDS)
-        self.assertLess(events + 1, 128)
+        emergency_guard = 18 * 3600
+        keepalives = -(-emergency_guard // module.MONITOR_KEEPALIVE_SECONDS)
+        heartbeats = -(-emergency_guard // module.MONITOR_HEARTBEAT_SECONDS)
+        self.assertLess(keepalives + heartbeats + 1, 256)
 
     def test_heartbeat_can_include_bounded_progress(self):
         module = load_helper_module()

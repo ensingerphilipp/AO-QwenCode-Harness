@@ -57,19 +57,12 @@ PROJECT_RISK_CONFIG_MAX_BYTES = 64 * 1024
 ARGS_FILE_MAX_BYTES = 4096
 PATCH_MAX_BYTES = 512 * 1024
 GH_TIMEOUT_SECONDS = 120
-# Deterministic effort-based native review budget (v0.2.3): selected
-# medium -> 240 minutes, selected high -> 600 minutes.
-NATIVE_TIMEOUT_MINUTES = {
-    "medium": 240,
-    "high": 600,
-}
-# Wrapper cleanup grace beyond the native budget (seconds).
+# `qwen review run` always arms an outer timer and defaults to only 120 minutes.
+# Keep one non-policy emergency guard above Qwen's largest native 16-hour
+# review-plan wall; Qwen's own plan owns the actual review deadline and reserves.
+REVIEW_RUN_EMERGENCY_TIMEOUT_MINUTES = 18 * 60
+# Wrapper cleanup grace beyond the native emergency guard (seconds).
 WRAPPER_CLEANUP_GRACE_SECONDS = 600
-# Qwen review soft-deadline policy. The deadline itself is the native hard
-# timeout epoch; these reserves make Qwen stop launching deeper audit work
-# early enough to verify and compose a semantic verdict before hard timeout.
-REVIEW_DEADLINE_RESERVE_SECONDS = 3600
-REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS = 1200
 LARGE_CHANGE_FILE_THRESHOLD = 15
 LARGE_CHANGE_LINE_THRESHOLD = 500
 
@@ -442,32 +435,14 @@ def select_effort(requested, pr_view, patch, patch_error, project_risk=None):
 
 
 def native_timeout_plan(selected_effort: str):
-    """Deterministic (native minutes, wrapper seconds) for the selected effort.
+    """Return the emergency `review run` timer and wrapper timeout.
 
-    Native minutes: medium -> 240, high -> 600. The wrapper timeout is the
-    native budget plus 600 seconds of cleanup grace.
+    The selected effort does not change this outer guard. Qwen's captured
+    review plan owns the actual review wall and its native reserve/floor.
     """
-    minutes = NATIVE_TIMEOUT_MINUTES[selected_effort]
+    del selected_effort
+    minutes = REVIEW_RUN_EMERGENCY_TIMEOUT_MINUTES
     return minutes, minutes * 60 + WRAPPER_CLEANUP_GRACE_SECONDS
-
-
-def review_deadline_env(timeout_minutes: int, started_at: float) -> dict:
-    """Qwen's soft-deadline environment for one native review run.
-
-    The deadline epoch matches the native hard timeout. Qwen uses the reserve
-    and compose floor to stop open-ended audit work early enough to verify and
-    compose before that hard deadline.
-    """
-    deadline_epoch = int(started_at + timeout_minutes * 60)
-    return {
-        "QWEN_REVIEW_DEADLINE_EPOCH": str(deadline_epoch),
-        "QWEN_REVIEW_DEADLINE_RESERVE_SECONDS": str(
-            REVIEW_DEADLINE_RESERVE_SECONDS
-        ),
-        "QWEN_REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS": str(
-            REVIEW_DEADLINE_COMPOSE_FLOOR_SECONDS
-        ),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -2169,11 +2144,10 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                 next_action="Re-run with the PR's current head SHA.",
             )
 
-        # Exactly one native semantic review. The native timeout is the
-        # deterministic effort-based budget (medium 240 / high 600
-        # minutes); the wrapper timeout adds 600 seconds of cleanup grace
-        # beyond that budget. Qwen also receives a soft deadline at the same
-        # hard-timeout epoch with explicit verification/composition reserves.
+        # Exactly one native semantic review. `qwen review run` requires an
+        # outer timer; use an 18-hour emergency guard above Qwen's largest
+        # native 16-hour review-plan wall. Qwen's captured plan owns the actual
+        # review deadline and its native verification/composition reserves.
         timeout_minutes, wrapper_timeout_seconds = native_timeout_plan(
             selected_effort
         )
@@ -2196,10 +2170,6 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             # only disables the narrow compatibility recovery below.
             review_artifacts_before = None
         native_review_started = time.time()
-        review_env = os.environ.copy()
-        review_env.update(
-            review_deadline_env(timeout_minutes, native_review_started)
-        )
         if session is not None:
             session.configure_progress(toplevel, native_review_started)
         try:
@@ -2209,7 +2179,7 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                 text=True,
                 timeout=wrapper_timeout_seconds,
                 cwd=toplevel,
-                env=review_env,
+                env=os.environ,
             )
         except (FileNotFoundError, subprocess.SubprocessError) as exc:
             return finish(

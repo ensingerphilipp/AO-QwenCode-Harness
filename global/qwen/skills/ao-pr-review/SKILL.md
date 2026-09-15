@@ -113,7 +113,7 @@ idle_timeout_ms:
   600000
 
 max_events:
-  128
+  256
 ```
 
 Do not add `&`, `nohup`, a foreground shell call, a second watcher,
@@ -229,7 +229,7 @@ python3 <skill-dir>/scripts/run_explicit_review.py \
 The Task:
 
 1. launches the helper through Qwen's native `monitor` tool in the current
-   repository worktree (`idle_timeout_ms: 600000`, `max_events: 128`);
+   repository worktree (`idle_timeout_ms: 600000`, `max_events: 256`);
 2. retains its AO session/task identity while the review runs;
 3. yields the turn — no waiting, no scheduler, no polling;
 4. receives the monitor events (`heartbeat`, then `complete` or
@@ -247,9 +247,9 @@ result is the stable identity used for deduplication.
 ## Ownership
 
 - Qwen's native `monitor` tool streams bounded protocol events back to the
-  session that launched the review, so a long review (up to eight hours for
-  high effort) keeps notifying without the 600000 ms foreground-shell cap and
-  without a background shell that settles silently.
+  session that launched the review, so a long review keeps notifying without
+  the 600000 ms foreground-shell cap and without a background shell that
+  settles silently.
 - A background shell is observable through `/tasks` and its output file but
   does not push a completion notification; the monitor transport is the
   supported notification mechanism, and its result is retrieved explicitly
@@ -258,16 +258,17 @@ result is the stable identity used for deduplication.
   480-second transport-only `keepalive` prevents idle termination. It carries
   no semantic progress and is not a review controller.
 - Rich observational `heartbeat` events are emitted every 960 seconds. The
-  combined keepalive/heartbeat event count over the ten-hour high-effort
-  budget remains well below `max_events: 128`.
+  combined keepalive/heartbeat event count across the 18-hour emergency guard
+  remains below `max_events: 256`.
 - Terminating the Qwen session can terminate its in-flight monitor review.
 - An interrupted or cancelled review has no valid verdict. A later helper
   invocation still revalidates the exact current head SHA and passes Qwen
   review-level `--resume`; this requests native continuation but does not prove
   it succeeded. Qwen may fall back to a fresh review when persisted state is unavailable.
-- The helper exports Qwen's soft review deadline at the native hard-timeout
-  epoch, with a 3600-second reserve and 1200-second compose floor, so deep
-  reverse audit can stop in time for verification and verdict composition.
+- The helper does not inject `QWEN_REVIEW_DEADLINE_*` values. Qwen's captured
+  review plan owns its review wall and native reserve/floor policy; the helper
+  carries only an 18-hour emergency `review run` timer above Qwen's largest
+  native 16-hour plan wall because stock `review run` always requires a timer.
 - For manual qualification, invoke this skill inside a dedicated AO reviewer Task session — not the main orchestrator and not the implementation worker.
 - The AO orchestrator rules create and supervise the dedicated reviewer Task;
   the Skill does not own AO scheduling or routing.
