@@ -157,7 +157,7 @@ For one qualified PR head, `ao-pr-review`:
 
 - requires an open, non-draft PR at the supplied SHA;
 - requires at least one passing deterministic required check;
-- selects medium or high effort deterministically from validated risk metadata;
+- selects effort deterministically from validated risk metadata; auto uses only medium/high and explicit low is supported;
 - locks concurrent review attempts for the same PR;
 - records local repository identity before and after review;
 - runs exactly one native, non-posting Qwen review;

@@ -1,12 +1,17 @@
 # ao-pr-review policy
 
-## Effort policy (effortPolicyVersion=2)
+## Effort policy (effortPolicyVersion=3)
 
-Effort selection is deterministic, local, fail-closed, and unit-tested. It never uses a model call. `auto` selects `high` when any high-risk rule matches and `medium` otherwise. Explicit `high` always remains high. Explicit `medium` is promoted to high whenever a high-risk rule matches.
+Effort selection is deterministic, local, fail-closed, and unit-tested. It never uses a model call.
+
+- Explicit `low` always selects native `low`; automatic selection never chooses low.
+- Explicit `high` always selects high.
+- `auto` selects high for any hard-risk trigger, or when at least two independent soft-risk signals match; otherwise it selects medium.
+- Explicit `medium` follows the same promotion rule as auto.
 
 `result.json` records `requestedEffort`, `selectedEffort`, `effortPolicyVersion`, `effortReasons[]`, and project risk-config provenance.
 
-### Global high-risk paths
+### Global hard-risk paths
 
 These harness contract surfaces always select high when changed:
 
@@ -24,42 +29,41 @@ These paths are project-neutral and cannot be removed or downgraded by repositor
 
 ### Project risk extension
 
-A repository may add high-risk paths and labels in `.qwen/review-config.json`:
+Schema v1 remains supported for compatibility: `highRiskPaths` and `highRiskLabels` are hard triggers. Schema v2 additionally supports `softRiskPaths`.
 
 ```json
 {
-  "schemaVersion": 1,
-  "highRiskPaths": ["src/security/**", "package-lock.json"],
+  "schemaVersion": 2,
+  "highRiskPaths": ["package-lock.json"],
+  "softRiskPaths": ["src/config/**"],
   "highRiskLabels": ["data-migration"]
 }
 ```
 
-The file is optional. When absent from the trusted repository `HEAD`, only the global rules apply. When present, it is read from the tracked `HEAD` blob rather than mutable local/untracked content. An untracked local file at the same path is rejected. The file is additive only and must satisfy all of these requirements:
+A matching soft project path contributes one independent soft signal. Two independent soft signals select high; one alone remains medium. A path may not appear in both high and soft lists.
 
-- tracked regular UTF-8 JSON file in repository `HEAD`, not a symlink;
-- at most 64 KiB;
-- root is an object with exactly the supported keys;
-- `schemaVersion` is exactly integer `1`;
-- `highRiskPaths` and `highRiskLabels` are arrays of non-empty strings;
-- at most 128 entries per array and 256 characters per entry;
-- path patterns are repository-relative POSIX patterns: no absolute paths, backslashes, or `..` segments;
-- entries are unique; labels are normalized and must also be unique case-insensitively;
-- control characters are rejected;
-- malformed, unsupported, unreadable, or ambiguous configuration is `review_error` before Qwen inference.
+The file is optional, additive only, read from the tracked repository `HEAD`, bounded to 64 KiB, and fail-closed on malformed or untrusted content.
 
-Project patterns support exact paths, `*` within one path segment, and a trailing `/**` for recursive descendants. Project rules extend but never replace the global rules.
+### Other hard-risk signals
 
-### Other high-risk signals
-
-Any of the following also selects high:
+Any of the following selects high:
 
 1. **High-risk labels**: `security`, `architecture`, `breaking-change`, `release-critical`, `risk:high`, `concurrency`, plus project-configured labels.
-2. **Title/body markers**: case-insensitive `risk:high`, `high-risk`, `high risk`, `breaking change`, `breaking-change`, or `security`.
+2. **Title/body markers**: `risk:high`, `high-risk`, `high risk`, `breaking change`, `breaking-change`, or `security`.
 3. **Large change**: `changedFiles >= 15` or `additions + deletions >= 500`.
-4. **Bounded patch signals**: concurrency/synchronization, authentication/permissions/secrets, TLS/cryptography, or persistence/schema/database terms.
-5. **Incomplete risk evidence**: missing/malformed size, file, or label metadata; a changed-file count exceeding the valid returned path count; patch retrieval failure; or a patch exceeding the 512 KiB inspection bound.
+4. **Strong patch signals**: concurrency primitives; authentication/password/private-key/API-key changes; TLS/cryptography terms; migration/DDL/SQLite/Postgres/MySQL terms.
+5. **Incomplete risk evidence**: missing or malformed metadata, incomplete file lists, patch retrieval failure, or an over-bound patch.
 
-Incomplete evidence selects high rather than guessing medium. There is no special assumption about a GitHub page size or a particular technology stack.
+### Soft patch signals
+
+Each category contributes at most one soft signal:
+
+- concurrency: channel/chan, race, scheduling, state-machine;
+- authentication/permissions: permission, secret, credential, token;
+- persistence/schema: schema, database, persistence terms.
+
+A single generic term therefore does not force high. Two independent soft signals do.
+
 
 ## Disposition policy
 

@@ -168,6 +168,7 @@ class InitProjectTests(unittest.TestCase):
             },
             "reviewRisk": {
                 "highRiskPaths": ["src/security/**"],
+                "softRiskPaths": ["src/config/**"],
                 "highRiskLabels": ["security"], "evidence": [],
             },
             "decisionsRequired": [],
@@ -203,6 +204,7 @@ class InitProjectTests(unittest.TestCase):
             (self.repo / ".qwen/review-config.json").read_text()
         )
         self.assertEqual(risk["highRiskPaths"], ["src/security/**"])
+        self.assertEqual(risk["softRiskPaths"], ["src/config/**"])
 
     def test_unresolved_decision_blocks_without_writes(self):
         doc = json.loads(self.inspection.read_text())

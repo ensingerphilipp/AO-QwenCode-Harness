@@ -316,11 +316,12 @@ class HelperBase(unittest.TestCase):
         (self.repo / "README.md").write_text("# demo app\n")
         (self.repo / ".qwen").mkdir()
         (self.repo / ".qwen" / "review-config.json").write_text(json.dumps({
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "highRiskPaths": [
                 "go.mod", "go.sum", "web/package.json", "web/package-lock.json",
-                "Dockerfile*", ".goreleaser*", "pkg/**", "internal/config/**"
+                "Dockerfile*", ".goreleaser*"
             ],
+            "softRiskPaths": ["pkg/**", "internal/config/**"],
             "highRiskLabels": []
         }) + "\n")
         self.git("add", "app.go", "README.md", ".qwen/review-config.json")
@@ -538,7 +539,7 @@ class TestHelpAndUsage(HelperBase):
         self.assertIn("Usage (skill):", result.stdout)
         self.assertIn(
             "/ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> "
-            "[auto|medium|high]",
+            "[auto|low|medium|high]",
             result.stdout,
         )
         self.assertFalse(self.log_path.exists(), "help must not invoke gh/qwen")
@@ -1080,7 +1081,7 @@ class TestProjectRiskConfig(unittest.TestCase):
 
     def test_absent_config_uses_empty_extension(self):
         cfg, meta = self.mod.load_project_risk_config(self.root)
-        self.assertEqual(cfg, {"highRiskPaths": (), "highRiskLabels": ()})
+        self.assertEqual(cfg, {"highRiskPaths": (), "softRiskPaths": (), "highRiskLabels": ()})
         self.assertFalse(meta["present"])
         self.assertIsNone(meta["sha256"])
 
@@ -1096,6 +1097,26 @@ class TestProjectRiskConfig(unittest.TestCase):
         self.assertTrue(meta["present"])
         self.assertRegex(meta["sha256"], r"^[0-9a-f]{64}$")
 
+    def test_v2_soft_paths_are_supported(self):
+        self.write({
+            "schemaVersion": 2,
+            "highRiskPaths": ["go.mod"],
+            "softRiskPaths": ["src/config/**"],
+            "highRiskLabels": [],
+        })
+        cfg, _ = self.mod.load_project_risk_config(self.root)
+        self.assertEqual(cfg["highRiskPaths"], ("go.mod",))
+        self.assertEqual(cfg["softRiskPaths"], ("src/config/**",))
+
+    def test_v2_path_cannot_be_both_high_and_soft(self):
+        self.write({
+            "schemaVersion": 2,
+            "highRiskPaths": ["src/config/**"],
+            "softRiskPaths": ["src/config/**"],
+        })
+        with self.assertRaisesRegex(ValueError, "both high and soft risk"):
+            self.mod.load_project_risk_config(self.root)
+
     def test_unknown_key_fails_closed(self):
         self.write({"schemaVersion": 1, "highRiskPaths": [], "disableGlobal": True})
         with self.assertRaisesRegex(ValueError, "unknown keys"):
@@ -1107,8 +1128,8 @@ class TestProjectRiskConfig(unittest.TestCase):
             self.mod.load_project_risk_config(self.root)
 
     def test_wrong_schema_version_fails_closed(self):
-        self.write({"schemaVersion": 2, "highRiskPaths": []})
-        with self.assertRaisesRegex(ValueError, "schemaVersion must be exactly 1"):
+        self.write({"schemaVersion": 3, "highRiskPaths": []})
+        with self.assertRaisesRegex(ValueError, "schemaVersion must be integer 1 or 2"):
             self.mod.load_project_risk_config(self.root)
 
     def test_symlink_fails_closed(self):
@@ -1142,8 +1163,9 @@ class TestEffortPolicyUnit(unittest.TestCase):
         self.project_risk = {
             "highRiskPaths": (
                 "go.mod", "go.sum", "web/package.json", "web/package-lock.json",
-                "Dockerfile*", ".goreleaser*", "pkg/**", "internal/config/**",
+                "Dockerfile*", ".goreleaser*",
             ),
+            "softRiskPaths": ("pkg/**", "internal/config/**"),
             "highRiskLabels": (),
         }
 
@@ -1156,14 +1178,14 @@ class TestEffortPolicyUnit(unittest.TestCase):
     def test_routine_selects_medium(self):
         effort, reasons = self.select("auto", routine_view())
         self.assertEqual(effort, "medium")
-        self.assertEqual(reasons, ["no high-risk rules matched (policy v2)"])
+        self.assertEqual(reasons, ["no high-risk rules matched (policy v3)"])
 
     def test_concurrency_change_selects_high(self):
         patch = "+ var mu sync.Mutex\n+ func work() { go func() { ch <- v }() }\n"
         effort, reasons = self.select("auto", routine_view(), patch=patch)
         self.assertEqual(effort, "high")
         self.assertTrue(
-            any(r.startswith("patch risk term: concurrency") for r in reasons)
+            any(r.startswith("patch high-risk term: concurrency") for r in reasons)
         )
 
     def test_security_auth_change_selects_high(self):
@@ -1171,16 +1193,17 @@ class TestEffortPolicyUnit(unittest.TestCase):
         effort, reasons = self.select("auto", routine_view(), patch=patch)
         self.assertEqual(effort, "high")
         self.assertTrue(
-            any(r.startswith("patch risk term: authentication/permissions")
+            any(r.startswith("patch high-risk term: authentication/permissions")
                 for r in reasons)
         )
 
-    def test_pkg_public_api_change_selects_high(self):
+    def test_pkg_path_alone_is_soft_and_stays_medium(self):
         effort, reasons = self.select(
             "auto", routine_view(filePaths=["pkg/api/types.go"])
         )
-        self.assertEqual(effort, "high")
-        self.assertIn("high-risk path: pkg/** (matched 'pkg/api/types.go')", reasons)
+        self.assertEqual(effort, "medium")
+        self.assertIn("soft-risk path: pkg/** (matched 'pkg/api/types.go')", reasons)
+        self.assertIn("soft-risk signals below high threshold: 1/2", reasons)
 
     def test_contract_change_selects_high(self):
         effort, _ = self.select("auto", routine_view(filePaths=["PROJECT.md"]))
@@ -1227,11 +1250,12 @@ class TestEffortPolicyUnit(unittest.TestCase):
         )
         self.assertEqual(effort, "high")
 
-    def test_runtime_config_change_selects_high(self):
-        effort, _ = self.select(
+    def test_runtime_config_path_alone_is_soft_and_stays_medium(self):
+        effort, reasons = self.select(
             "auto", routine_view(filePaths=["internal/config/config.go"])
         )
-        self.assertEqual(effort, "high")
+        self.assertEqual(effort, "medium")
+        self.assertIn("soft-risk path: internal/config/** (matched 'internal/config/config.go')", reasons)
 
     def test_large_change_by_files_selects_high(self):
         effort, reasons = self.select(
@@ -1315,11 +1339,32 @@ class TestEffortPolicyUnit(unittest.TestCase):
 
     def test_explicit_medium_promoted_when_high_risk(self):
         effort, reasons = self.select(
-            "medium", routine_view(filePaths=["pkg/api/types.go"])
+            "medium", routine_view(filePaths=["go.mod"])
         )
         self.assertEqual(effort, "high")
         self.assertEqual(reasons[0], "explicit medium promoted to high")
-        self.assertIn("high-risk path: pkg/** (matched 'pkg/api/types.go')", reasons)
+        self.assertIn("high-risk path: go.mod (matched 'go.mod')", reasons)
+
+    def test_explicit_low_is_never_promoted(self):
+        effort, reasons = self.select("low", routine_view(filePaths=["go.mod"]))
+        self.assertEqual(effort, "low")
+        self.assertEqual(reasons[0], "explicit low effort requested")
+        self.assertIn("high-risk path: go.mod (matched 'go.mod')", reasons)
+
+    def test_single_generic_database_term_stays_medium(self):
+        effort, reasons = self.select("auto", routine_view(), patch="+ database health label\n")
+        self.assertEqual(effort, "medium")
+        self.assertTrue(any(r.startswith("patch soft-risk term: persistence/schema") for r in reasons))
+
+    def test_two_independent_soft_signals_select_high(self):
+        effort, reasons = self.select(
+            "auto",
+            routine_view(filePaths=["internal/config/config.go"]),
+            patch="+ databaseName := value\n",
+        )
+        self.assertEqual(effort, "high")
+        self.assertIn("soft-risk path: internal/config/** (matched 'internal/config/config.go')", reasons)
+        self.assertTrue(any(r.startswith("patch soft-risk term: persistence/schema") for r in reasons))
 
     def test_explicit_medium_routine_remains_medium(self):
         effort, _ = self.select("medium", routine_view())
@@ -1341,6 +1386,7 @@ class TestRealGhMetadata(unittest.TestCase):
         self.plain_patch = "--- a/internal/app/app.go\n+++ b/internal/app/app.go\n"
         self.project_risk = {
             "highRiskPaths": ("go.mod",),
+            "softRiskPaths": (),
             "highRiskLabels": (),
         }
 
@@ -1484,7 +1530,7 @@ class TestEffortPolicyEndToEnd(HelperBase):
 
     def test_high_risk_selected_high_in_command(self):
         pr = self.default_pr_doc()
-        pr["files"] = [{"path": "pkg/api/types.go"}]
+        pr["files"] = [{"path": "go.mod"}]
         pr["changedFiles"] = 1
         self.setup_success(
             pr=pr, companion=make_companion(effort="high")
@@ -1496,7 +1542,7 @@ class TestEffortPolicyEndToEnd(HelperBase):
 
     def test_explicit_medium_promoted_and_recorded(self):
         pr = self.default_pr_doc()
-        pr["files"] = [{"path": "pkg/api/types.go"}]
+        pr["files"] = [{"path": "go.mod"}]
         pr["changedFiles"] = 1
         self.setup_success(pr=pr, companion=make_companion(effort="high"))
         result = self.run_helper("5", VALID_SHA, "medium")
@@ -1505,8 +1551,22 @@ class TestEffortPolicyEndToEnd(HelperBase):
         self.assertEqual(doc["requestedEffort"], "medium")
         self.assertEqual(doc["selectedEffort"], "high")
         self.assertEqual(doc["effortReasons"][0], "explicit medium promoted to high")
-        self.assertIn("high-risk path: pkg/** (matched 'pkg/api/types.go')",
+        self.assertIn("high-risk path: go.mod (matched 'go.mod')",
                       doc["effortReasons"])
+
+    def test_explicit_low_on_high_risk_pr_stays_low(self):
+        pr = self.default_pr_doc()
+        pr["files"] = [{"path": "go.mod"}]
+        pr["changedFiles"] = 1
+        self.setup_success(pr=pr, companion=make_companion(effort="low"))
+        result = self.run_helper("5", VALID_SHA, "low")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        argv = self.qwen_review_argv()
+        self.assertEqual(argv[argv.index("--effort") + 1], "low")
+        doc = self.read_result()
+        self.assertEqual(doc["requestedEffort"], "low")
+        self.assertEqual(doc["selectedEffort"], "low")
+        self.assertEqual(doc["effortReasons"][0], "explicit low effort requested")
 
     def test_explicit_high_on_routine_pr(self):
         self.setup_success(companion=make_companion(effort="high"))
@@ -1534,7 +1594,7 @@ class TestEffortPolicyEndToEnd(HelperBase):
         result = self.run_helper("5", VALID_SHA)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         doc = self.read_result()
-        self.assertEqual(doc["effortPolicyVersion"], 2)
+        self.assertEqual(doc["effortPolicyVersion"], 3)
         self.assertIsInstance(doc["effortReasons"], list)
         self.assertTrue(doc["effortReasons"])
 
@@ -2771,8 +2831,8 @@ class TestSkillDocs(unittest.TestCase):
         self.assertIn("name: ao-pr-review", frontmatter)
         self.assertIn(
             "description: Run one explicit, non-posting native Qwen semantic "
-            "review of an exact GitHub PR head after required CI passes, "
-            "selecting medium or high effort deterministically.",
+            "review of an exact GitHub PR head after required CI passes, with "
+            "deterministic auto effort and explicit low/medium/high support.",
             frontmatter,
         )
         self.assertNotIn("disable-model-invocation", frontmatter)
@@ -2791,7 +2851,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.7")
+        self.assertEqual(version, "0.3.8")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3787,7 +3847,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         section = _ao_skill_section("## AO reviewer Task entry point")
         for phrase in (
             "--monitor-envelope <PR-or-URL> <EXPECTED-SHA> "
-            "[auto|medium|high]",
+            "[auto|low|medium|high]",
             "orchestrator creates",
             "one dedicated AO reviewer Task",
             "leaving the main orchestrator unblocked",
@@ -3820,7 +3880,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.7", readme)
+        self.assertIn("VERSION=0.3.8", readme)
         self.assertIn("contractVersion=6", readme)
 
 

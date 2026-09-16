@@ -45,8 +45,9 @@ class TemplateContractTests(unittest.TestCase):
     def test_default_review_risk_config_is_additive_empty(self):
         config = json.loads((ROOT / ".qwen/review-config.json").read_text())
         self.assertEqual(config, {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "highRiskPaths": [],
+            "softRiskPaths": [],
             "highRiskLabels": [],
         })
 

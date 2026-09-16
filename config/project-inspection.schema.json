@@ -278,11 +278,20 @@
       "additionalProperties": false,
       "required": [
         "highRiskPaths",
+        "softRiskPaths",
         "highRiskLabels",
         "evidence"
       ],
       "properties": {
         "highRiskPaths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "softRiskPaths": {
           "type": "array",
           "uniqueItems": true,
           "items": {

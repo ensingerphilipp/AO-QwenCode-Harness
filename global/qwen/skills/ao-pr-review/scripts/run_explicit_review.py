@@ -2,9 +2,9 @@
 """ao-pr-review helper.
 
 Runs exactly one explicit, non-posting native Qwen semantic review of an
-exact GitHub PR head after required CI passes. Effort (medium/high) is
-selected deterministically by a local policy; no model call is used for
-selection. All evidence is written under the state root
+exact GitHub PR head after required CI passes. Auto effort (medium/high) is
+selected deterministically by a local policy; explicit low/medium/high is
+supported and no model call is used for selection. All evidence is written under the state root
 (~/.local/state/ao-pr-review by default, overridable for
 maintenance via AO_PR_REVIEW_STATE_DIR).
 
@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 CONTRACT_VERSION = 6
-EFFORT_POLICY_VERSION = 2
+EFFORT_POLICY_VERSION = 3
 # Commit status context the AO orchestrator publishes after each semantic
 # review. The required-CI preflight excludes exactly this context (exact
 # string match only): it can only pass as a result of a review, so treating
@@ -112,21 +112,21 @@ USAGE = """\
 ao-pr-review: one explicit, non-posting native Qwen semantic review of an exact PR head.
 
 Usage (skill):
-  /ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|medium|high]
+  /ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
   /ao-pr-review help
 
 Helper:
   run_explicit_review.py --args-file <injected-args-file>
-  run_explicit_review.py <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|medium|high]
+  run_explicit_review.py <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
   run_explicit_review.py --background-envelope --args-file <injected-args-file>
-  run_explicit_review.py --background-envelope <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|medium|high]
+  run_explicit_review.py --background-envelope <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
   run_explicit_review.py --monitor-envelope --args-file <injected-args-file>
-  run_explicit_review.py --monitor-envelope <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|medium|high]
+  run_explicit_review.py --monitor-envelope <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
   run_explicit_review.py help
 
 Rules:
   * The expected head SHA must be exactly 40 lowercase hexadecimal characters.
-  * The default effort request is auto (deterministic medium/high selection).
+  * The default effort request is auto (deterministic medium/high selection; auto never selects low).
   * This skill is non-posting and makes no intended tracked application changes.
   * --background-envelope keeps the same result contract but exits 0
     whenever a trustworthy result.json was persisted and validated, for
@@ -139,7 +139,7 @@ Rules:
 """
 
 # ---------------------------------------------------------------------------
-# Deterministic effort policy (policy v2). No model calls.
+# Deterministic effort policy (policy v3). No model calls.
 # ---------------------------------------------------------------------------
 
 BASE_HIGH_RISK_PATH_PATTERNS = (
@@ -170,61 +170,17 @@ TITLE_BODY_RISK_MARKERS = (
     "security",
 )
 
-RISK_TERM_GROUPS = (
-    (
-        "concurrency",
-        (
-            r"\bgoroutine",
-            r"\bgo\s+func\b",
-            r"\bchannel",
-            r"\bchan\b",
-            r"\bmutex",
-            r"\bsync\.(Mutex|RWMutex|WaitGroup|Once|Cond)\b",
-            r"\batomic\.",
-            r"\brace\b",
-            r"\bdeadlock",
-            r"\bscheduling",
-            r"\bstate[-_ ]?machine",
-        ),
-    ),
-    (
-        "authentication/permissions",
-        (
-            r"\bauth(entication|orization)?\b",
-            r"\bpermission",
-            r"\bsecret",
-            r"\bcredential",
-            r"\btoken\b",
-            r"\bpassword",
-            r"private key",
-            r"api key",
-        ),
-    ),
-    (
-        "tls/cryptography",
-        (
-            r"\btls\b",
-            r"\bcertificate",
-            r"\bx509\b",
-            r"\bcrypto\b",
-            r"\bencrypt",
-            r"\bdecrypt",
-            r"\bhmac\b",
-        ),
-    ),
-    (
-        "persistence/schema",
-        (
-            r"\bmigrat",
-            r"\bschema",
-            r"\bdatabase",
-            r"\bddl\b",
-            r"\bpersisten",
-            r"\bsqlite",
-            r"\bpostgres",
-            r"\bmysql",
-        ),
-    ),
+HARD_RISK_TERM_GROUPS = (
+    ("concurrency", (r"\bgoroutine", r"\bgo\s+func\b", r"\bmutex", r"\bsync\.(Mutex|RWMutex|WaitGroup|Once|Cond)\b", r"\batomic\.", r"\bdeadlock")),
+    ("authentication/permissions", (r"\bauth(entication|orization)?\b", r"\bpassword", r"private key", r"api key")),
+    ("tls/cryptography", (r"\btls\b", r"\bcertificate", r"\bx509\b", r"\bcrypto\b", r"\bencrypt", r"\bdecrypt", r"\bhmac\b")),
+    ("persistence/schema", (r"\bmigrat", r"\bddl\b", r"\bsqlite", r"\bpostgres", r"\bmysql")),
+)
+
+SOFT_RISK_TERM_GROUPS = (
+    ("concurrency", (r"\bchannel", r"\bchan\b", r"\brace\b", r"\bscheduling", r"\bstate[-_ ]?machine")),
+    ("authentication/permissions", (r"\bpermission", r"\bsecret", r"\bcredential", r"\btoken\b")),
+    ("persistence/schema", (r"\bschema", r"\bdatabase", r"\bpersisten")),
 )
 
 
@@ -241,198 +197,121 @@ def _compile_path_pattern(pattern: str) -> "re.Pattern":
 _COMPILED_BASE_PATH_PATTERNS = tuple(
     (_compile_path_pattern(p), p) for p in BASE_HIGH_RISK_PATH_PATTERNS
 )
-_COMPILED_RISK_TERMS = tuple(
+_COMPILED_HARD_RISK_TERMS = tuple(
     (group, tuple(re.compile(term, re.IGNORECASE) for term in terms))
-    for group, terms in RISK_TERM_GROUPS
+    for group, terms in HARD_RISK_TERM_GROUPS
+)
+_COMPILED_SOFT_RISK_TERMS = tuple(
+    (group, tuple(re.compile(term, re.IGNORECASE) for term in terms))
+    for group, terms in SOFT_RISK_TERM_GROUPS
 )
 
 
 
 def load_project_risk_config(repo_root: Path):
-    """Load the optional tracked repository risk extension from trusted HEAD.
-
-    Local untracked, staged-only, modified, or symlinked policy must never
-    influence effort selection. The later repository guard independently
-    refuses tracked/staged worktree changes before Qwen launches.
-    """
+    """Load the optional tracked repository risk extension from trusted HEAD."""
     path = repo_root / PROJECT_RISK_CONFIG
     rel = PROJECT_RISK_CONFIG.as_posix()
     meta = {"relativePath": rel, "present": False, "sha256": None}
-
-    listed = subprocess.run(
-        ["git", "-C", str(repo_root), "ls-tree", "HEAD", "--", rel],
-        capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS, check=False,
-    )
+    listed = subprocess.run(["git", "-C", str(repo_root), "ls-tree", "HEAD", "--", rel], capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS, check=False)
     if listed.returncode != 0:
         raise ValueError(f"cannot inspect tracked {PROJECT_RISK_CONFIG}: {listed.stderr.strip()}")
     line = listed.stdout.strip()
     if not line:
         if path.exists() or path.is_symlink():
             raise ValueError(f"untracked {PROJECT_RISK_CONFIG} is not trusted policy")
-        return {"highRiskPaths": (), "highRiskLabels": ()}, meta
-
-    # Expected: <mode> <type> <object>	<path>
+        return {"highRiskPaths": (), "softRiskPaths": (), "highRiskLabels": ()}, meta
     try:
-        left, tracked_path = line.split("\t", 1)
-        mode, obj_type, _object_id = left.split(" ", 2)
+        left, tracked_path = line.split("\t", 1); mode, obj_type, _object_id = left.split(" ", 2)
     except ValueError as exc:
         raise ValueError(f"unexpected git metadata for {PROJECT_RISK_CONFIG}") from exc
     if tracked_path != rel or obj_type != "blob" or mode not in {"100644", "100755"}:
         raise ValueError(f"{PROJECT_RISK_CONFIG} must be a tracked regular file")
-
-    shown = subprocess.run(
-        ["git", "-C", str(repo_root), "show", f"HEAD:{rel}"],
-        capture_output=True, timeout=GH_TIMEOUT_SECONDS, check=False,
-    )
+    shown = subprocess.run(["git", "-C", str(repo_root), "show", f"HEAD:{rel}"], capture_output=True, timeout=GH_TIMEOUT_SECONDS, check=False)
     if shown.returncode != 0:
-        err = shown.stderr.decode("utf-8", errors="replace").strip()
-        raise ValueError(f"cannot read tracked {PROJECT_RISK_CONFIG}: {err}")
+        raise ValueError(f"cannot read tracked {PROJECT_RISK_CONFIG}: {shown.stderr.decode('utf-8', errors='replace').strip()}")
     raw = shown.stdout
     if len(raw) > PROJECT_RISK_CONFIG_MAX_BYTES:
-        raise ValueError(
-            f"{PROJECT_RISK_CONFIG} exceeds {PROJECT_RISK_CONFIG_MAX_BYTES} bytes"
-        )
-    try:
-        doc = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"{PROJECT_RISK_CONFIG} is not valid UTF-8 JSON: {exc}") from exc
-    if not isinstance(doc, dict):
-        raise ValueError(f"{PROJECT_RISK_CONFIG} root must be a JSON object")
+        raise ValueError(f"{PROJECT_RISK_CONFIG} exceeds {PROJECT_RISK_CONFIG_MAX_BYTES} bytes")
+    try: doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc: raise ValueError(f"{PROJECT_RISK_CONFIG} is not valid UTF-8 JSON: {exc}") from exc
+    if not isinstance(doc, dict): raise ValueError(f"{PROJECT_RISK_CONFIG} root must be a JSON object")
+    version = doc.get("schemaVersion")
+    if type(version) is not int or version not in (1, 2): raise ValueError(f"{PROJECT_RISK_CONFIG} schemaVersion must be integer 1 or 2")
     allowed = {"schemaVersion", "highRiskPaths", "highRiskLabels"}
+    if version == 2: allowed.add("softRiskPaths")
     unknown = sorted(set(doc) - allowed)
-    if unknown:
-        raise ValueError(f"{PROJECT_RISK_CONFIG} has unknown keys: {unknown}")
-    if doc.get("schemaVersion") != 1 or isinstance(doc.get("schemaVersion"), bool):
-        raise ValueError(f"{PROJECT_RISK_CONFIG} schemaVersion must be exactly 1")
-
+    if unknown: raise ValueError(f"{PROJECT_RISK_CONFIG} has unknown keys: {unknown}")
     def string_list(name):
         value = doc.get(name, [])
-        if not isinstance(value, list):
-            raise ValueError(f"{PROJECT_RISK_CONFIG} {name} must be an array")
-        out = []
+        if not isinstance(value, list): raise ValueError(f"{PROJECT_RISK_CONFIG} {name} must be an array")
+        out=[]
         for item in value:
-            if not isinstance(item, str) or not item.strip():
-                raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entries must be non-empty strings")
-            item = item.strip()
-            if len(item) > 256:
-                raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entry exceeds 256 characters")
-            if any(ord(ch) < 32 or ord(ch) == 127 for ch in item):
-                raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entries must not contain control characters")
+            if not isinstance(item, str) or not item.strip(): raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entries must be non-empty strings")
+            item=item.strip()
+            if len(item)>256: raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entry exceeds 256 characters")
+            if any(ord(ch)<32 or ord(ch)==127 for ch in item): raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entries must not contain control characters")
             out.append(item)
-        if len(out) > 128:
-            raise ValueError(f"{PROJECT_RISK_CONFIG} {name} may contain at most 128 entries")
-        if len(set(out)) != len(out):
-            raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entries must be unique")
+        if len(out)>128: raise ValueError(f"{PROJECT_RISK_CONFIG} {name} may contain at most 128 entries")
+        if len(set(out))!=len(out): raise ValueError(f"{PROJECT_RISK_CONFIG} {name} entries must be unique")
         return out
-
-    paths = string_list("highRiskPaths")
-    for pattern in paths:
-        pp = Path(pattern)
-        if pp.is_absolute() or "\\" in pattern or any(part == ".." for part in pp.parts):
-            raise ValueError(
-                f"{PROJECT_RISK_CONFIG} highRiskPaths must be repository-relative POSIX patterns: {pattern!r}"
-            )
-        _compile_path_pattern(pattern)
-    labels = [label.lower() for label in string_list("highRiskLabels")]
-    if len(set(labels)) != len(labels):
-        raise ValueError(f"{PROJECT_RISK_CONFIG} highRiskLabels must be unique case-insensitively")
+    high_paths=string_list("highRiskPaths"); soft_paths=string_list("softRiskPaths") if version==2 else []
+    for name, paths in (("highRiskPaths", high_paths), ("softRiskPaths", soft_paths)):
+        for pattern in paths:
+            pp=Path(pattern)
+            if pp.is_absolute() or "\\" in pattern or any(part==".." for part in pp.parts): raise ValueError(f"{PROJECT_RISK_CONFIG} {name} must be repository-relative POSIX patterns: {pattern!r}")
+            _compile_path_pattern(pattern)
+    overlap=sorted(set(high_paths)&set(soft_paths))
+    if overlap: raise ValueError(f"{PROJECT_RISK_CONFIG} paths cannot be both high and soft risk: {overlap}")
+    labels=[label.lower() for label in string_list("highRiskLabels")]
+    if len(set(labels))!=len(labels): raise ValueError(f"{PROJECT_RISK_CONFIG} highRiskLabels must be unique case-insensitively")
     meta.update({"present": True, "sha256": hashlib.sha256(raw).hexdigest()})
-    return {"highRiskPaths": tuple(paths), "highRiskLabels": tuple(labels)}, meta
+    return {"highRiskPaths": tuple(high_paths), "softRiskPaths": tuple(soft_paths), "highRiskLabels": tuple(labels)}, meta
 
 def select_effort(requested, pr_view, patch, patch_error, project_risk=None):
-    """Deterministic medium/high selection (policy v2). Returns (effort, reasons)."""
-    reasons = []
-    project_risk = project_risk or {"highRiskPaths": (), "highRiskLabels": ()}
-    compiled_paths = _COMPILED_BASE_PATH_PATTERNS + tuple(
-        (_compile_path_pattern(p), p) for p in project_risk.get("highRiskPaths", ())
-    )
+    """Deterministic low/medium/high selection (policy v3)."""
+    hard_reasons=[]; soft_reasons=[]; soft_keys=set()
+    project_risk = project_risk or {"highRiskPaths": (), "softRiskPaths": (), "highRiskLabels": ()}
+    hard_paths = _COMPILED_BASE_PATH_PATTERNS + tuple((_compile_path_pattern(p), p) for p in project_risk.get("highRiskPaths", ()))
+    soft_paths = tuple((_compile_path_pattern(p), p) for p in project_risk.get("softRiskPaths", ()))
     high_risk_labels = BASE_HIGH_RISK_LABELS | set(project_risk.get("highRiskLabels", ()))
-
-    file_paths = pr_view.get("filePaths") or []
-    labels = pr_view.get("labels") or []
-    title = pr_view.get("title") or ""
-    body = pr_view.get("body") or ""
-    changed_files = pr_view.get("changedFiles")
-    additions = pr_view.get("additions")
-    deletions = pr_view.get("deletions")
-
-    # Incomplete risk metadata or inability to inspect the diff safely.
-    if changed_files is None or additions is None or deletions is None:
-        reasons.append("incomplete risk metadata: PR size fields missing")
-    if not pr_view.get("filesMetadataValid", False):
-        reasons.append(
-            "incomplete risk metadata: files metadata missing, wrong-type, "
-            "or malformed"
-        )
-    if not pr_view.get("labelsMetadataValid", False):
-        reasons.append(
-            "incomplete risk metadata: labels metadata missing, wrong-type, "
-            "or malformed"
-        )
-    if changed_files is not None and changed_files > len(file_paths):
-        reasons.append(
-            "incomplete risk metadata: changedFiles="
-            f"{changed_files} exceeds the {len(file_paths)} valid file paths "
-            "returned; file list treated as incomplete"
-        )
-
-    # High-risk paths.
-    for regex, pattern in compiled_paths:
+    file_paths=pr_view.get("filePaths") or []; labels=pr_view.get("labels") or []; title=pr_view.get("title") or ""; body=pr_view.get("body") or ""
+    changed_files=pr_view.get("changedFiles"); additions=pr_view.get("additions"); deletions=pr_view.get("deletions")
+    if changed_files is None or additions is None or deletions is None: hard_reasons.append("incomplete risk metadata: PR size fields missing")
+    if not pr_view.get("filesMetadataValid", False): hard_reasons.append("incomplete risk metadata: files metadata missing, wrong-type, or malformed")
+    if not pr_view.get("labelsMetadataValid", False): hard_reasons.append("incomplete risk metadata: labels metadata missing, wrong-type, or malformed")
+    if changed_files is not None and changed_files > len(file_paths): hard_reasons.append(f"incomplete risk metadata: changedFiles={changed_files} exceeds the {len(file_paths)} valid file paths returned; file list treated as incomplete")
+    for regex, pattern in hard_paths:
         for path in file_paths:
-            if regex.match(path):
-                reasons.append(f"high-risk path: {pattern} (matched '{path}')")
-                break
-
-    # High-risk labels (case-insensitive).
+            if regex.match(path): hard_reasons.append(f"high-risk path: {pattern} (matched '{path}')"); break
+    for regex, pattern in soft_paths:
+        for path in file_paths:
+            if regex.match(path): soft_keys.add(f"project-path:{pattern}"); soft_reasons.append(f"soft-risk path: {pattern} (matched '{path}')"); break
     for label in labels:
-        if isinstance(label, str) and label.strip().lower() in high_risk_labels:
-            reasons.append(f"high-risk label: {label.strip().lower()}")
-
-    # Large or unusually broad changes.
-    if changed_files is not None and changed_files >= LARGE_CHANGE_FILE_THRESHOLD:
-        reasons.append(
-            f"large change: changedFiles={changed_files} >= "
-            f"{LARGE_CHANGE_FILE_THRESHOLD}"
-        )
-    if (
-        additions is not None
-        and deletions is not None
-        and additions + deletions >= LARGE_CHANGE_LINE_THRESHOLD
-    ):
-        reasons.append(
-            "large change: additions+deletions="
-            f"{additions + deletions} >= {LARGE_CHANGE_LINE_THRESHOLD}"
-        )
-
-    # Explicit high-risk title/body markers.
-    haystack = f"{title}\n{body}".lower()
+        if isinstance(label,str) and label.strip().lower() in high_risk_labels: hard_reasons.append(f"high-risk label: {label.strip().lower()}")
+    if changed_files is not None and changed_files >= LARGE_CHANGE_FILE_THRESHOLD: hard_reasons.append(f"large change: changedFiles={changed_files} >= {LARGE_CHANGE_FILE_THRESHOLD}")
+    if additions is not None and deletions is not None and additions+deletions >= LARGE_CHANGE_LINE_THRESHOLD: hard_reasons.append(f"large change: additions+deletions={additions+deletions} >= {LARGE_CHANGE_LINE_THRESHOLD}")
+    haystack=f"{title}\n{body}".lower()
     for marker in TITLE_BODY_RISK_MARKERS:
-        if marker in haystack:
-            reasons.append(f"title/body risk marker: {marker}")
-
-    # Bounded patch inspection.
-    if patch_error:
-        reasons.append(f"incomplete risk metadata: {patch_error}")
+        if marker in haystack: hard_reasons.append(f"title/body risk marker: {marker}")
+    if patch_error: hard_reasons.append(f"incomplete risk metadata: {patch_error}")
     elif patch:
-        for group, patterns in _COMPILED_RISK_TERMS:
+        for group, patterns in _COMPILED_HARD_RISK_TERMS:
             for pattern in patterns:
-                match = pattern.search(patch)
-                if match:
-                    reasons.append(
-                        f"patch risk term: {group} (matched '{match.group(0).strip()}')"
-                    )
-                    break
-
-    if requested == "high":
-        return "high", ["explicit high effort requested"] + reasons
-    if requested == "medium":
-        if reasons:
-            return "high", ["explicit medium promoted to high"] + reasons
-        return "medium", ["no high-risk rules matched (policy v2)"]
-    if reasons:
-        return "high", reasons
-    return "medium", ["no high-risk rules matched (policy v2)"]
-
+                match=pattern.search(patch)
+                if match: hard_reasons.append(f"patch high-risk term: {group} (matched '{match.group(0).strip()}')"); break
+        for group, patterns in _COMPILED_SOFT_RISK_TERMS:
+            for pattern in patterns:
+                match=pattern.search(patch)
+                if match: soft_keys.add(f"patch-group:{group}"); soft_reasons.append(f"patch soft-risk term: {group} (matched '{match.group(0).strip()}')"); break
+    automatic_high = bool(hard_reasons) or len(soft_keys) >= 2
+    observed = hard_reasons + soft_reasons
+    if requested == "low": return "low", ["explicit low effort requested"] + observed
+    if requested == "high": return "high", ["explicit high effort requested"] + observed
+    if requested == "medium" and automatic_high: return "high", ["explicit medium promoted to high"] + observed
+    if automatic_high: return "high", observed
+    if soft_reasons: return "medium", soft_reasons + [f"soft-risk signals below high threshold: {len(soft_keys)}/2"]
+    return "medium", ["no high-risk rules matched (policy v3)"]
 
 def native_timeout_plan(selected_effort: str):
     """Return the emergency `review run` guard and wrapper timeout.
@@ -1820,9 +1699,9 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
     expected_head = tokens[1]
     requested_effort = tokens[2] if len(tokens) == 3 else "auto"
 
-    if requested_effort not in ("auto", "medium", "high"):
+    if requested_effort not in ("auto", "low", "medium", "high"):
         raise UsageError(
-            f"invalid effort {requested_effort!r} (expected auto, medium, or high)"
+            f"invalid effort {requested_effort!r} (expected auto, low, medium, or high)"
         )
     if not SHA_RE.match(expected_head):
         raise UsageError(

@@ -78,9 +78,9 @@ def validate_inspection(doc: dict, repo: Path) -> None:
             if not isinstance(item.get("evidence"), list) or not item["evidence"]:
                 raise RuntimeError(f"inspection verification.{group} command lacks evidence")
     risk = doc.get("reviewRisk")
-    if not isinstance(risk, dict) or set(risk) != {"highRiskPaths", "highRiskLabels", "evidence"}:
+    if not isinstance(risk, dict) or set(risk) != {"highRiskPaths", "softRiskPaths", "highRiskLabels", "evidence"}:
         raise RuntimeError("inspection reviewRisk object is malformed")
-    for key in ("highRiskPaths", "highRiskLabels"):
+    for key in ("highRiskPaths", "softRiskPaths", "highRiskLabels"):
         if not isinstance(risk[key], list) or any(not isinstance(v, str) or not v.strip() for v in risk[key]):
             raise RuntimeError(f"inspection reviewRisk.{key} is malformed")
 
@@ -129,8 +129,9 @@ def planned_files(doc: dict, semantic_enabled: bool) -> dict[Path, tuple[str, in
         if rel == ".qwen/review-config.json":
             risk = doc.get("reviewRisk", {})
             text = json.dumps({
-                "schemaVersion": 1,
+                "schemaVersion": 2,
                 "highRiskPaths": risk.get("highRiskPaths", []),
+                "softRiskPaths": risk.get("softRiskPaths", []),
                 "highRiskLabels": risk.get("highRiskLabels", []),
             }, indent=2) + "\n"
         elif rel == ".agent-harness.json":

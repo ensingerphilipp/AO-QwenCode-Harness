@@ -1,18 +1,18 @@
-# ao-pr-review — v0.3.7
+# ao-pr-review — v0.3.8
 
 A host-global Qwen Code Skill that runs **one explicit, non-posting native
 Qwen semantic review** of an exact GitHub PR head after required
 deterministic CI passes (required checks excluding only the exact context
 `ao/semantic-review`).
 
-- `VERSION=0.3.7`
+- `VERSION=0.3.8`
 - `contractVersion=6` (result/finding contract)
-- `effortPolicyVersion=2` (deterministic medium/high selection with validated project extensions)
+- `effortPolicyVersion=3` (explicit low; deterministic medium/high auto selection with hard/soft risk signals)
 
 ## What it does
 
 Given a PR (number or URL), an expected 40-character head SHA, and an effort
-request (`auto` by default, or `medium`/`high`):
+request (`auto` by default, or explicit `low`/`medium`/`high`):
 
 1. Resolves the PR with read-only `gh` commands and verifies the canonical
    PR URL matches the current repository (fork PRs stay attributed to the
@@ -22,7 +22,7 @@ request (`auto` by default, or `medium`/`high`):
    checks excluding only the exact context `ao/semantic-review` — with at
    least one such check (the excluded context never gates the review;
    missing or malformed checks output fails closed).
-3. Selects `medium` or `high` effort deterministically (no model call),
+3. Selects effort deterministically (no model call); `auto` chooses only `medium` or `high`, while explicit `low` is passed through,
    consuming the real `gh` flattened `files`/`labels` arrays and failing
    closed (high) on missing, wrong-type, or malformed risk metadata.
 4. Requires the repository to have no tracked/staged changes before
@@ -38,7 +38,7 @@ request (`auto` by default, or `medium`/`high`):
 
    ```text
    qwen review run <canonical-PR-URL> \
-     --effort <medium|high> --resume --json --fail-on request-changes \
+     --effort <low|medium|high> --resume --json --fail-on request-changes \
      --approval-mode yolo --timeout-minutes 1080
    ```
 
@@ -190,11 +190,11 @@ the validated `result.json` named by the `complete` event.
 ## Layout
 
 ```text
-VERSION                                   0.3.7
+VERSION                                   0.3.8
 SKILL.md                                  skill definition (operator or dispatched AO reviewer)
 scripts/run_explicit_review.py            deterministic helper (Python 3, stdlib only)
 references/contract.md                    native Qwen artifact + result contract
-references/policy.md                      effort policy v2 + disposition policy
+references/policy.md                      effort policy v3 + disposition policy
 tests/test_review_helper.py               unit tests (fake gh/qwen, no network)
 tests/fixtures/qwen-review-artifact-v1.json  official-shaped companion fixture
 ```
@@ -210,7 +210,7 @@ Install an exact copy of this tree (excluding `.git`) at:
 with directories `0755`, Markdown/JSON/Python files `0644`, and
 `scripts/run_explicit_review.py` `0755`.
 
-The versioned ZIP (e.g. `ao-pr-review-v0.3.7.zip`, built with
+The versioned ZIP (e.g. `ao-pr-review-v0.3.8.zip`, built with
 `git archive` from the committed HEAD) is a **source archive**: it
 captures the committed tree and records no live state. Installation from
 it is a plain copy plus an explicit restoration of executable mode

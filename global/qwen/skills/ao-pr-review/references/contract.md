@@ -5,7 +5,7 @@
 Skill (operator, or dispatched AO reviewer):
 
 ```text
-/ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|medium|high]
+/ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
 /ao-pr-review help
 ```
 
@@ -13,11 +13,11 @@ Helper:
 
 ```text
 python3 <skill-dir>/scripts/run_explicit_review.py --args-file <injected-path>
-python3 <skill-dir>/scripts/run_explicit_review.py <target> <sha> [auto|medium|high]
+python3 <skill-dir>/scripts/run_explicit_review.py <target> <sha> [auto|low|medium|high]
 python3 <skill-dir>/scripts/run_explicit_review.py --background-envelope --args-file <injected-path>
-python3 <skill-dir>/scripts/run_explicit_review.py --background-envelope <PR-number-or-URL> <sha> [auto|medium|high]
+python3 <skill-dir>/scripts/run_explicit_review.py --background-envelope <PR-number-or-URL> <sha> [auto|low|medium|high]
 python3 <skill-dir>/scripts/run_explicit_review.py --monitor-envelope --args-file <injected-path>
-python3 <skill-dir>/scripts/run_explicit_review.py --monitor-envelope <PR-number-or-URL> <sha> [auto|medium|high]
+python3 <skill-dir>/scripts/run_explicit_review.py --monitor-envelope <PR-number-or-URL> <sha> [auto|low|medium|high]
 python3 <skill-dir>/scripts/run_explicit_review.py help
 ```
 
@@ -282,7 +282,7 @@ Disposition semantics:
 
 The optional repository file `.qwen/review-config.json` extends deterministic
 effort selection. Its schema and matching semantics are normative in
-`policy.md` (effortPolicyVersion=2). The helper resolves it from the verified
+`policy.md` (effortPolicyVersion=3). The helper resolves it from the verified
 repository root before Qwen inference and reads only the tracked blob at
 repository `HEAD`; mutable or untracked local content never supplies review
 policy. If present in `HEAD`, it must be a bounded regular file (not a symlink)

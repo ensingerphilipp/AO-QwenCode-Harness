@@ -45,7 +45,7 @@ Return one JSON object conforming exactly to `config/project-inspection.schema.j
 
 Every asserted fact and every proposed verification command must cite repository evidence through the schema's evidence objects. Evidence paths are repository-relative when they refer to repository files.
 
-`reviewRisk.highRiskPaths` and `reviewRisk.highRiskLabels` are additive project risk metadata for `.qwen/review-config.json`; do not repeat global protected paths solely because the harness already protects them.
+`reviewRisk.highRiskPaths`, `reviewRisk.softRiskPaths`, and `reviewRisk.highRiskLabels` are additive project risk metadata for `.qwen/review-config.json`; do not repeat global protected paths solely because the harness already protects them.
 
 `decisionsRequired` contains only genuine human policy/architecture choices that cannot be resolved from repository truth. Each item must identify the affected template tokens.
 

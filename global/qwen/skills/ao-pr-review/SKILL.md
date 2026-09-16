@@ -1,6 +1,6 @@
 ---
 name: ao-pr-review
-description: Run one explicit, non-posting native Qwen semantic review of an exact GitHub PR head after required CI passes, selecting medium or high effort deterministically.
+description: Run one explicit, non-posting native Qwen semantic review of an exact GitHub PR head after required CI passes, with deterministic auto effort and explicit low/medium/high support.
 ---
 
 # ao-pr-review
@@ -24,7 +24,7 @@ This skill has exactly two supported invocation paths:
    session dispatched by the orchestrator for this review invokes this
    skill with exactly the dispatched arguments — a PR number or canonical
    PR URL, the expected 40-character head SHA, and the effort request
-   (`auto`, `medium`, or `high`).
+   (`auto`, `low`, `medium`, or `high`).
 
 A model that was not dispatched for this review does not invoke this
 skill on its own initiative.
@@ -32,7 +32,7 @@ skill on its own initiative.
 Supported forms:
 
 ```text
-/ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|medium|high]
+/ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
 /ao-pr-review help
 ```
 
@@ -223,7 +223,7 @@ available. A dedicated reviewer Task explicitly created by the orchestrator may 
 
 ```text
 python3 <skill-dir>/scripts/run_explicit_review.py \
-  --monitor-envelope <PR-or-URL> <EXPECTED-SHA> [auto|medium|high]
+  --monitor-envelope <PR-or-URL> <EXPECTED-SHA> [auto|low|medium|high]
 ```
 
 The Task:
