@@ -130,10 +130,15 @@ class MigrationContractTests(unittest.TestCase):
         rule.parent.mkdir(parents=True)
         rule.write_text("before\n")
         snapshot = migrate_project.backup(self.project, repo, self.home)
+        queue_entry = json.loads((snapshot / "manifest.json").read_text())["files"]["host/.local/bin/ao-review-queue"]
+        self.assertIs(queue_entry.get("present"), False)
         rule.write_text("after\n")
         newly_created = self.home / ".qwen/QWEN.md"
         newly_created.parent.mkdir(parents=True, exist_ok=True)
         newly_created.write_text("new\n")
+        queue_binary = self.home / ".local/bin/ao-review-queue"
+        queue_binary.parent.mkdir(parents=True, exist_ok=True)
+        queue_binary.write_text("new queue\n")
 
         original_run = migrate_project.run
         def fake_run(cmd, **kwargs):
@@ -146,6 +151,7 @@ class MigrationContractTests(unittest.TestCase):
             migrate_project.restore_host_snapshot(snapshot, "demo")
         self.assertEqual(rule.read_text(), "before\n")
         self.assertFalse(newly_created.exists())
+        self.assertFalse(queue_binary.exists())
 
 
 if __name__ == "__main__":

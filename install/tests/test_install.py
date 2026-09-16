@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,11 @@ TOKENS = sorted({
     )["renderedFiles"].values()
     for token in tokens
 })
+
+
+INSTALL_SPEC = importlib.util.spec_from_file_location("install_host", INSTALL)
+install_host = importlib.util.module_from_spec(INSTALL_SPEC)
+INSTALL_SPEC.loader.exec_module(install_host)
 
 
 class InstallHostTests(unittest.TestCase):
@@ -51,11 +57,29 @@ class InstallHostTests(unittest.TestCase):
             .read_text()
         )
         self.assertIn(".qwen/QWEN.md", manifest["files"])
+        self.assertIn(".local/bin/ao-review-queue", manifest["files"])
         self.assertIn(".qwen/skills/ao-pr-review/SKILL.md", manifest["files"])
         self.assertIn(
             ".qwen/skills/ao-semantic-review-override/SKILL.md",
             manifest["files"],
         )
+
+    def test_queue_introduction_requires_global_quiescence(self):
+        from unittest import mock
+        prior = {"schemaVersion": 1, "files": {".qwen/QWEN.md": {}}}
+        response = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps({"data": [{"isTerminated": False}]}), stderr=""
+        )
+        with mock.patch.object(install_host.subprocess, "run", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "zero nonterminated AO sessions"):
+                install_host.require_queue_upgrade_quiescence(prior, False)
+
+    def test_queue_aware_install_needs_no_later_quiescence(self):
+        from unittest import mock
+        prior = {"schemaVersion": 1, "files": {str(install_host.QUEUE_TARGET): {}}}
+        with mock.patch.object(install_host.subprocess, "run") as run:
+            install_host.require_queue_upgrade_quiescence(prior, False)
+            run.assert_not_called()
 
     def test_unmanaged_collision_refused_and_replace_backed_up(self):
         target = self.home / ".qwen/QWEN.md"

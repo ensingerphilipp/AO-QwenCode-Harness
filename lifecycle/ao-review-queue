@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+"""Deterministic host-global FIFO admission for semantic reviews."""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import re
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+SCHEMA_VERSION = 1
+STATE_ENV = "AO_REVIEW_QUEUE_STATE_DIR"
+DEFAULT_STATE_DIR = Path.home() / ".local/state/ao-qwen-code-harness/review-queue"
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+REVIEW_KEY_RE = re.compile(r"^[^/\s]+/[^#\s]+#[1-9][0-9]*@[0-9a-f]{40}$")
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def default_state() -> dict:
+    return {"schemaVersion": SCHEMA_VERSION, "nextTicketId": 1, "active": None, "pending": []}
+
+
+def validate_ticket(ticket: object) -> dict:
+    if not isinstance(ticket, dict):
+        raise ValueError("ticket is not an object")
+    required = {
+        "ticketId": int, "reviewKey": str, "repository": str,
+        "prNumber": int, "prUrl": str, "expectedHead": str,
+        "orchestratorSessionId": str, "workerSessionId": str,
+        "repairCycle": int, "resumeAttempt": bool, "queuedAt": str,
+    }
+    for key, typ in required.items():
+        if type(ticket.get(key)) is not typ:
+            raise ValueError(f"ticket.{key} has invalid type")
+    if ticket["ticketId"] < 1 or ticket["prNumber"] < 1:
+        raise ValueError("ticket numeric identity must be positive")
+    if ticket["repairCycle"] not in (0, 1):
+        raise ValueError("ticket.repairCycle must be 0 or 1")
+    if not REVIEW_KEY_RE.fullmatch(ticket["reviewKey"]):
+        raise ValueError("ticket.reviewKey is malformed")
+    if not SHA_RE.fullmatch(ticket["expectedHead"]):
+        raise ValueError("ticket.expectedHead is malformed")
+    owner_repo = ticket["reviewKey"].split("#", 1)[0]
+    if ticket["repository"] != owner_repo:
+        raise ValueError("ticket repository does not match reviewKey")
+    suffix = f"#{ticket['prNumber']}@{ticket['expectedHead']}"
+    if not ticket["reviewKey"].endswith(suffix):
+        raise ValueError("ticket PR/SHA does not match reviewKey")
+    for key in ("repository", "prUrl", "orchestratorSessionId", "workerSessionId", "queuedAt"):
+        if not ticket[key].strip():
+            raise ValueError(f"ticket.{key} must be non-empty")
+    expected_url = f"https://github.com/{ticket['repository']}/pull/{ticket['prNumber']}"
+    if ticket["prUrl"] != expected_url:
+        raise ValueError("ticket.prUrl does not match repository/PR identity")
+    return ticket
+
+
+def validate_state(state: object) -> dict:
+    if not isinstance(state, dict) or state.get("schemaVersion") != SCHEMA_VERSION:
+        raise ValueError("unsupported or malformed queue state")
+    if type(state.get("nextTicketId")) is not int or state["nextTicketId"] < 1:
+        raise ValueError("invalid nextTicketId")
+    if state.get("active") is not None:
+        validate_ticket(state["active"])
+    pending = state.get("pending")
+    if not isinstance(pending, list):
+        raise ValueError("pending is not an array")
+    ids, keys = set(), set()
+    tickets = ([state["active"]] if state.get("active") else []) + pending
+    for ticket in tickets:
+        validate_ticket(ticket)
+        if ticket["ticketId"] in ids or ticket["reviewKey"] in keys:
+            raise ValueError("duplicate ticket identity in queue state")
+        ids.add(ticket["ticketId"]); keys.add(ticket["reviewKey"])
+    if ids and state["nextTicketId"] <= max(ids):
+        raise ValueError("nextTicketId does not advance beyond existing tickets")
+    return state
+
+
+def state_dir() -> Path:
+    return Path(os.environ.get(STATE_ENV, DEFAULT_STATE_DIR)).expanduser().resolve()
+
+
+def load_state(path: Path) -> dict:
+    if not path.exists():
+        return default_state()
+    if not path.is_file() or path.is_symlink():
+        raise ValueError("queue state path is not a regular file")
+    return validate_state(json.loads(path.read_text(encoding="utf-8")))
+
+
+def write_state(path: Path, state: dict) -> None:
+    validate_state(state)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, temp_name = tempfile.mkstemp(prefix="state.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(state, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+            handle.flush(); os.fsync(handle.fileno())
+        os.chmod(temp_name, 0o600)
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def emit(payload: dict) -> int:
+    print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+    return 0
+
+
+def with_locked_state(mutator):
+    directory = state_dir()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_path = directory / "queue.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        state_path = directory / "state.json"
+        state = load_state(state_path)
+        result, changed = mutator(state)
+        if changed:
+            write_state(state_path, state)
+        return result
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+def make_ticket(args, ticket_id: int) -> dict:
+    expected_key = f"{args.repository}#{args.pr_number}@{args.expected_head}"
+    if args.review_key != expected_key:
+        raise ValueError("reviewKey must exactly match repository, PR number, and expected head")
+    return validate_ticket({
+        "ticketId": ticket_id,
+        "reviewKey": args.review_key,
+        "repository": args.repository,
+        "prNumber": args.pr_number,
+        "prUrl": args.pr_url,
+        "expectedHead": args.expected_head,
+        "orchestratorSessionId": args.orchestrator_session_id,
+        "workerSessionId": args.worker_session_id,
+        "repairCycle": args.repair_cycle,
+        "resumeAttempt": args.resume_attempt,
+        "queuedAt": now_iso(),
+    })
+
+
+def request(args) -> dict:
+    def mutate(state):
+        existing = ([state["active"]] if state["active"] else []) + state["pending"]
+        for ticket in existing:
+            if ticket["reviewKey"] != args.review_key:
+                continue
+            if ticket["orchestratorSessionId"] != args.orchestrator_session_id:
+                raise ValueError("reviewKey already belongs to a different orchestrator")
+            granted = state["active"] is ticket
+            position = 0 if granted else state["pending"].index(ticket) + 1
+            return {"status": "granted" if granted else "queued", "ticketId": ticket["ticketId"], "position": position, "existing": True}, False
+        ticket = make_ticket(args, state["nextTicketId"])
+        state["nextTicketId"] += 1
+        if state["active"] is None:
+            state["active"] = ticket
+            return {"status": "granted", "ticketId": ticket["ticketId"], "position": 0, "existing": False}, True
+        state["pending"].append(ticket)
+        return {"status": "queued", "ticketId": ticket["ticketId"], "position": len(state["pending"]), "existing": False}, True
+    return with_locked_state(mutate)
+
+
+def promote_next(state: dict):
+    state["active"] = state["pending"].pop(0) if state["pending"] else None
+    return state["active"]
+
+
+def grant_notice(ticket):
+    if ticket is None:
+        return None
+    return {
+        "ticketId": ticket["ticketId"],
+        "reviewKey": ticket["reviewKey"],
+        "orchestratorSessionId": ticket["orchestratorSessionId"],
+    }
+
+
+def release(args) -> dict:
+    def mutate(state):
+        active = state["active"]
+        if active is None:
+            raise ValueError("no active review ticket")
+        if active["ticketId"] != args.ticket_id:
+            raise ValueError("ticket is not the active review ticket")
+        released = active["ticketId"]
+        next_ticket = promote_next(state)
+        return {"released": released, "next": grant_notice(next_ticket)}, True
+    return with_locked_state(mutate)
+
+
+def cancel(args) -> dict:
+    def mutate(state):
+        active = state["active"]
+        if active is not None and active["ticketId"] == args.ticket_id:
+            cancelled = active["ticketId"]
+            next_ticket = promote_next(state)
+            return {"cancelled": cancelled, "wasActive": True, "next": grant_notice(next_ticket)}, True
+        for index, ticket in enumerate(state["pending"]):
+            if ticket["ticketId"] == args.ticket_id:
+                state["pending"].pop(index)
+                return {"cancelled": args.ticket_id, "wasActive": False, "next": None}, True
+        raise ValueError("ticket not found")
+    return with_locked_state(mutate)
+
+def status(args) -> dict:
+    def inspect(state):
+        if args.ticket_id is None:
+            return {"active": state["active"], "pending": state["pending"], "nextTicketId": state["nextTicketId"]}, False
+        if state["active"] is not None and state["active"]["ticketId"] == args.ticket_id:
+            return {"status": "granted", "position": 0, "ticket": state["active"]}, False
+        for index, ticket in enumerate(state["pending"]):
+            if ticket["ticketId"] == args.ticket_id:
+                return {"status": "queued", "position": index + 1, "ticket": ticket}, False
+        raise ValueError("ticket not found")
+    return with_locked_state(inspect)
+
+
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Deterministic host-global semantic-review FIFO admission queue")
+    sub = p.add_subparsers(dest="command", required=True)
+    req = sub.add_parser("request")
+    req.add_argument("--review-key", required=True)
+    req.add_argument("--repository", required=True)
+    req.add_argument("--pr-number", required=True, type=int)
+    req.add_argument("--pr-url", required=True)
+    req.add_argument("--expected-head", required=True)
+    req.add_argument("--orchestrator-session-id", required=True)
+    req.add_argument("--worker-session-id", required=True)
+    req.add_argument("--repair-cycle", type=int, choices=(0, 1), default=0)
+    req.add_argument("--resume-attempt", action="store_true")
+    rel = sub.add_parser("release"); rel.add_argument("ticket_id", type=int)
+    can = sub.add_parser("cancel"); can.add_argument("ticket_id", type=int)
+    sta = sub.add_parser("status"); sta.add_argument("ticket_id", type=int, nargs="?")
+    return p
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        actions = {"request": request, "release": release, "cancel": cancel, "status": status}
+        return emit(actions[args.command](args))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ao-review-queue: {exc}", file=os.sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

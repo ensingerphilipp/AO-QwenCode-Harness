@@ -30,6 +30,7 @@ flowchart TB
     subgraph AO[AO control plane]
         O[Qwen orchestrator session]
         W[Implementation worker task]
+        Q[Host-global review admission queue]
         R[Dedicated reviewer task]
     end
 
@@ -51,7 +52,7 @@ flowchart TB
     O --> W
     W --> WT --> V --> PR --> CI
     CI --> O
-    O --> R --> M --> S --> J --> O
+    O --> Q --> R --> M --> S --> J --> O
     O --> P --> H
     O -. one repair request at most .-> W
 ```
@@ -67,7 +68,7 @@ The orchestrator itself is a Qwen Code session, but **Qwen is not the lifecycle 
 | Scoped implementation | Qwen implementation worker | Coding happens in an isolated AO worktree and ends in an exact-SHA handoff. |
 | Mechanical correctness | `scripts/verify` locally and in CI | Commands and exit codes are reproducible; prose is not. |
 | Semantic review execution | `ao-pr-review` wrapping native `qwen review run` | The wrapper binds review to one PR head, validates artifacts, and fails closed. |
-| Review lifecycle and GitHub publication | AO orchestrator | Review execution stays non-posting; only the controller may publish the narrow status and summary. |
+| Review admission, lifecycle, and GitHub publication | AO orchestrator + deterministic host-global queue | Orchestrators own lifecycle; the queue only serializes the scarce review resource; review execution stays non-posting. |
 | Product scope and architecture | The managed project | Repository truth must travel with the repository. |
 | Merge | Human | Passing automation is evidence, not authorization to integrate. |
 
@@ -121,6 +122,12 @@ The review identity is repository + PR number + expected head SHA. The PR head i
 ### No self-review
 
 The implementation worker never reviews its own change. A dedicated reviewer gets a narrow assignment, cannot repair findings, and returns a structured result to the orchestrator. This reduces role confusion and keeps implementation context from becoming review authority.
+
+### Review admission is deterministic and context-idle
+
+Before reviewer creation, the orchestrator requests one host-global FIFO review slot. A queued initial review is only durable machine identity: no reviewer Task, Monitor, semantic process, polling loop, or recurring model context is consumed. On promotion the owning orchestrator revalidates the exact SHA and deterministic CI before spawning the reviewer. Timeout resumes release their slot and re-enter at the back of the FIFO.
+
+Introducing this queue on an already-running pre-queue host is a one-time quiescent cutover: no AO sessions may remain nonterminated while the host-global rules change. The installer enforces that transition; once the queue is part of the managed install, normal upgrades do not require this special drain.
 
 ### Long reviews do not block the orchestrator
 
@@ -251,7 +258,7 @@ For the full procedure, options, and ownership boundary, read [Installation and 
 | [`templates/verify/`](templates/verify/) | Evidence-driven Go, Node, Python, Rust, Go+Node, and generic verification profiles. |
 | [`templates/prompts/`](templates/prompts/) | Read-only project inspection contract. |
 | [`config/`](config/) | Machine-readable schemas. |
-| [`lifecycle/`](lifecycle/) | Project-neutral orchestrator worktree refresh. |
+| [`lifecycle/`](lifecycle/) | Project-neutral orchestrator refresh and host-global semantic-review admission. |
 | [`install/`](install/) | Idempotent host installation, initialization, migration, and verification. |
 | [`docs/`](docs/) | Architecture record, operating procedures, and current status. |
 
@@ -265,7 +272,7 @@ This is the same fail-fast, non-repairing gate invoked by GitHub Actions.
 
 ## Current status
 
-The reusable policy layers, project templates, verification profiles, installation and migration tooling, semantic-review pipeline, manual override, and production-project smoke qualification are complete. The accepted qualification covered issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge.
+The reusable policy layers, project templates, verification profiles, installation and migration tooling, semantic-review pipeline, host-global deterministic review admission, manual override, and production-project smoke qualification are complete. The accepted qualification covered issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge.
 
 Fresh-host/fresh-project end-to-end qualification remains deliberately deferred. See [Current Harness Implementation Status](docs/status/current.md) for the authoritative progress record.
 

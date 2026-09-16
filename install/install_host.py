@@ -19,10 +19,12 @@ FILE_MAP = {
     ROOT / "global/ao/rules/orchestratorRules.md": Path(".ao/rules/orchestratorRules.md"),
     ROOT / "global/ao/policies/semanticReviewPublication.md": Path(".ao/policies/semanticReviewPublication.md"),
     ROOT / "lifecycle/ao-refresh-orchestrator": Path(".local/bin/ao-refresh-orchestrator"),
+    ROOT / "lifecycle/ao-review-queue": Path(".local/bin/ao-review-queue"),
 }
 SKILLS_SOURCE_ROOT = ROOT / "global/qwen/skills"
 SKILLS_TARGET_ROOT = Path(".qwen/skills")
 REQUIRED_COMMANDS = ("git", "gh", "ao", "qwen", "python3")
+QUEUE_TARGET = Path(".local/bin/ao-review-queue")
 
 
 def sha256(path: Path) -> str:
@@ -83,6 +85,33 @@ def load_manifest(path: Path) -> dict:
     return data
 
 
+def require_queue_upgrade_quiescence(prior: dict, skip: bool) -> None:
+    """Fail closed when introducing queue-aware rules to an active old install."""
+    if skip or not prior["files"] or str(QUEUE_TARGET) in prior["files"]:
+        return
+    proc = subprocess.run(
+        ["ao", "session", "ls", "--all", "--include-terminated", "--json"],
+        text=True, capture_output=True, timeout=15,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "cannot prove AO quiescence before introducing host-global review queue: "
+            + (proc.stderr or proc.stdout).strip()
+        )
+    try:
+        data = json.loads(proc.stdout).get("data")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("AO session list is malformed during queue cutover") from exc
+    if not isinstance(data, list):
+        raise RuntimeError("AO session list is malformed during queue cutover")
+    active = [item for item in data if isinstance(item, dict) and item.get("isTerminated") is False]
+    if active:
+        raise RuntimeError(
+            "introducing host-global review queue requires zero nonterminated AO sessions; "
+            f"found {len(active)}"
+        )
+
+
 def install(args: argparse.Namespace) -> int:
     home = args.home.expanduser().resolve()
     xdg_state = Path(os.environ.get("XDG_STATE_HOME", home / ".local/state")).expanduser().resolve()
@@ -90,6 +119,7 @@ def install(args: argparse.Namespace) -> int:
     manifest_path = state_dir / "install-manifest.json"
     prior = load_manifest(manifest_path)
     versions = check_commands(args.skip_command_check)
+    require_queue_upgrade_quiescence(prior, args.skip_quiescence_check)
     files = managed_sources()
 
     collisions = []
@@ -171,6 +201,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Report changes without writing")
     parser.add_argument("--replace", action="store_true", help="Back up and replace conflicting unmanaged targets")
     parser.add_argument("--skip-command-check", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--skip-quiescence-check", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
         return install(args)

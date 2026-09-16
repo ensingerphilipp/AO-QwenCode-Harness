@@ -24,3 +24,11 @@ Safety behavior:
 `ao-reconcile` is **not** a core startup dependency. Reconciliation of AO session state after host reboot is operational recovery behavior with stronger side effects (session restoration, tmux interaction, waits, and AO-version sensitivity).
 
 Keep it optional/manual unless later qualification proves a stable AO-supported recovery contract. It must not be installed into automatic startup by the baseline harness.
+
+## `ao-review-queue`
+
+Core deterministic host-global admission utility for semantic reviews. It serializes semantic-review execution across all managed projects for the harness user using one `flock`-protected, atomically written FIFO state file under the harness XDG state directory.
+
+Only AO orchestrators use it. A queued ticket is inert machine state: no reviewer Task, Qwen Monitor, semantic process, polling loop, or recurring model message exists until the ticket is promoted. Promotion returns only the next ticket ID, review key, and owning orchestrator ID to the releasing orchestrator, which sends one minimal `REVIEW_SLOT_GRANTED` message to the recorded orchestrator session. The promoted orchestrator requalifies the exact PR SHA and deterministic CI before creating a reviewer.
+
+Timeout resume requests release the current ticket and re-enter at the back of the same FIFO. Stale active tickets have no TTL or automatic recovery; manual `status` + explicit `cancel` is the fail-closed recovery path.

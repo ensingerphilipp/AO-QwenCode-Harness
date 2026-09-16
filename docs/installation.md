@@ -18,9 +18,11 @@ bash install/install-host.sh
 bash install/verify-install.sh
 ```
 
-The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, every host-global Skill under `global/qwen/skills/` (currently `ao-pr-review` and the human-only `ao-semantic-review-override`), and the orchestrator refresh utility to standard user locations under `$HOME`.
+The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, every host-global Skill under `global/qwen/skills/` (currently `ao-pr-review` and the human-only `ao-semantic-review-override`), the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
 
 Installation state is recorded at `${XDG_STATE_HOME:-$HOME/.local/state}/ao-qwen-code-harness/install-manifest.json`. A repeated identical install is a no-op. A target previously managed by the installer may be upgraded when its installed hash still matches the manifest.
+
+When upgrading an existing pre-queue harness installation to a version that introduces `ao-review-queue`, the installer requires **zero nonterminated AO sessions across all projects** before changing host-global rules. This one-time quiescent cutover prevents already-running orchestrators with the old dispatch policy from bypassing the new host-global admission queue. Fresh installs and later queue-aware upgrades do not require this special cutover.
 
 If an unmanaged or locally modified target differs from the harness source, installation fails. `--replace` is explicit operator authorization to back up that target under the harness state directory and replace it.
 

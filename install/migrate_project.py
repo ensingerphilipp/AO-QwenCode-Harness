@@ -114,6 +114,7 @@ def backup(project: dict, repo: Path, home: Path) -> Path:
         "host/.ao/rules/orchestratorRules.md": home / ".ao/rules/orchestratorRules.md",
         "host/.ao/policies/semanticReviewPublication.md": home / ".ao/policies/semanticReviewPublication.md",
         "host/.local/bin/ao-refresh-orchestrator": home / ".local/bin/ao-refresh-orchestrator",
+        "host/.local/bin/ao-review-queue": home / ".local/bin/ao-review-queue",
     }
     expected_skill = ROOT / "global/qwen/skills/ao-pr-review"
     for source in sorted(expected_skill.rglob("*")):

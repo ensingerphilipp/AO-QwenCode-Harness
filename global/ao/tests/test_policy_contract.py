@@ -23,6 +23,17 @@ class AOPolicyContractTests(unittest.TestCase):
         self.assertIn("If semantic review is disabled", PUB)
         self.assertIn("create or update neither publication", PUB)
 
+    def test_review_admission_is_host_global_deterministic_and_context_idle(self):
+        for phrase in (
+            "Acquire host-global review admission",
+            "strict host-wide FIFO",
+            "Do not create a reviewer Task",
+            "Queued state is inert deterministic machine state",
+            "REVIEW_SLOT_GRANTED",
+            "There is no lease TTL",
+        ):
+            self.assertIn(phrase, ORCH)
+
     def test_timeout_review_resume_is_bounded_and_same_reviewer(self):
         for phrase in (
             "`timedOut: true` is the sole automatic-resume case",

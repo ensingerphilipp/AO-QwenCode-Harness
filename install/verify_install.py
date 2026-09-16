@@ -17,6 +17,7 @@ EXPECTED = {
     Path(".ao/rules/orchestratorRules.md"): ROOT / "global/ao/rules/orchestratorRules.md",
     Path(".ao/policies/semanticReviewPublication.md"): ROOT / "global/ao/policies/semanticReviewPublication.md",
     Path(".local/bin/ao-refresh-orchestrator"): ROOT / "lifecycle/ao-refresh-orchestrator",
+    Path(".local/bin/ao-review-queue"): ROOT / "lifecycle/ao-review-queue",
 }
 SKILLS_ROOT = ROOT / "global/qwen/skills"
 

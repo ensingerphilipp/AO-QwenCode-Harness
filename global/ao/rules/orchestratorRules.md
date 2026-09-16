@@ -21,17 +21,30 @@ Before completing any PR handoff or dispatching semantic review:
 3. Require `bash scripts/verify: pass` in the worker handoff.
 4. Require at least one required deterministic GitHub check and all such checks passing for that exact head. Exclude only the exact semantic-review publication context `ao/semantic-review` from this prerequisite.
 5. Re-read the live PR head immediately before dispatch; a mismatch invalidates the handoff and requires a fresh worker handoff.
+6. Resolve semantic-review identity as repository + PR number + expected head SHA and inspect active/completed reviewer Tasks. If that exact identity already has a reviewer lifecycle, do not request queue admission or create another reviewer; reconcile the existing lifecycle instead.
 
 Pending deterministic checks are not failure. Defer without busy-polling. Route a clearly PR-caused CI failure to the owning worker as `CI_FIX_REQUEST`; escalate infrastructure, unrelated, or ambiguous failures for human attention.
 
 If semantic review is disabled and all readiness checks pass, stop the automated review lifecycle here. Report the exact qualified head, passing deterministic CI state, and that semantic review was disabled. Never publish `ao/semantic-review` for that lifecycle.
 
-## Deduplicate and dispatch
+## Acquire host-global review admission
 
-- Semantic-review identity is repository + PR number + expected head SHA.
-- Inspect active and completed reviewer Tasks before spawning. Never duplicate a review for the same identity; the Skill's lock is an additional guard.
+Semantic review is a host-constrained resource. Before creating any reviewer Task, request deterministic admission through the installed `~/.local/bin/ao-review-queue`. Queue identity is the exact `reviewKey` (`owner/repo#<PR>@<SHA>`), and queue state belongs to the orchestrator/control layer, never the worker or reviewer.
+
+- Request admission only after the exact-SHA readiness checks above pass. Supply only machine identity: review key, repository, canonical PR URL/number, expected head, this orchestrator session ID, owning worker session ID, repair cycle, and whether this is the one timeout-resume attempt.
+- `granted`: record the returned `ticketId`, immediately re-read the live PR head and deterministic required checks, and only then continue to reviewer creation. A grant is resource admission, not review authorization.
+- `queued`: record only `ticketId` + `reviewKey` and stop work on that review. Do not create a reviewer Task, start Monitor, publish semantic-review `pending`, poll queue state, send recurring status messages, or ask a model to retain/reason about the queued review. Queued state is inert deterministic machine state.
+- The queue is strict host-wide FIFO across projects. Duplicate requests for the same review key by the same orchestrator are idempotent; conflicting ownership or malformed queue state requires human attention.
+- A promoted ticket is delivered by one minimal `REVIEW_SLOT_GRANTED ticketId=<ID> reviewKey=<KEY>` message from the orchestrator that released the prior active ticket. On receipt, verify with ticket-scoped `ao-review-queue status <ticketId>` that the ticket is the active ticket owned by this orchestrator before doing anything else.
+- After promotion, repeat the exact-SHA/open/non-draft/deterministic-CI checks before reviewer creation. If requalification fails, release the active ticket without creating a reviewer, notify the next promoted orchestrator if one is returned, and handle the stale/configuration/CI state under the normal lifecycle rules.
+- When the native review attempt reaches a terminal result/failure/cancellation, release its active ticket promptly. If `release` returns a next ticket, send exactly one minimal `REVIEW_SLOT_GRANTED` message to that ticket's recorded orchestrator session. The queue helper never sends AO messages itself.
+- If an active ticket is stranded because its owning orchestrator/reviewer died, fail closed. There is no lease TTL, session probing, daemon, or automatic stale-ticket recovery; an operator must inspect `ao-review-queue status` and explicitly `cancel` the proven-dead ticket. If cancellation promotes a next ticket, the operator/orchestrator must deliver the same minimal grant message.
+
+## Dispatch a granted review
+
+- Enter this section only while holding the active queue ticket for this exact review identity. Perform one final active/completed reviewer-Task deduplication check before spawning. If the identity is already represented, release the ticket, notify any promoted next orchestrator, and reconcile the existing lifecycle instead; the Skill's per-PR lock remains an additional guard.
 - Spawn one dedicated Qwen reviewer Task labelled `rev-pr-<NUMBER>`.
-- For dedicated reviewers, omit `--prompt` and `--issue` from `ao spawn`; after successful startup send the complete assignment with `ao send` to the returned session ID. Never retry by shrinking prompts.
+- For dedicated reviewers, omit `--prompt` and `--issue` from `ao spawn`; after successful startup send the complete assignment with `ao send` to the returned session ID. Never retry by shrinking prompts. If reviewer creation or assignment delivery fails, release the active queue ticket, notify any promoted next orchestrator, and handle the dispatch failure without publishing a running semantic-review state.
 - The assignment must include `AO_SEMANTIC_REVIEW`, this orchestrator ID, the owning worker ID, canonical PR URL, expected SHA, and reviewer-mode prohibitions.
 - Send the reviewer this exact command:
 
@@ -54,7 +67,7 @@ For `SEMANTIC_REVIEW_RESULT`:
 
 A missing, malformed, identity-mismatched, cancelled, or transport-failed result is a review error, never a pass. Do not silently retry.
 
-A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. If the PR head is unchanged and this review identity has not yet been resumed, send the same reviewer Task the same `/ao-pr-review` command again so Qwen can attempt native continuation from surviving state. `--resume` is a request, not proof of continuation; do not claim resume succeeded unless Qwen explicitly reports it. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
+A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. Release the active review-admission ticket first. If the PR head is unchanged and this review identity has not yet been resumed, request a new queue ticket for the same review identity with `resumeAttempt=true`; strict FIFO applies, so this resume joins the back of the host-wide queue. Keep the original reviewer Task/worktree available but idle while queued: do not start Monitor, poll, or send recurring model messages. When the resume ticket is granted and requalified, send that same reviewer Task the same `/ao-pr-review` command so Qwen can attempt native continuation from surviving state. `--resume` is a request, not proof of continuation; do not claim resume succeeded unless Qwen explicitly reports it. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
 
 ## Route the lifecycle result
 
@@ -69,7 +82,7 @@ Use the semantic disposition produced by the trusted Skill result; do not redefi
 ## One repair and rereview maximum
 
 - Accept `READY_FOR_REREVIEW` only with `repairCycle=1`, a new head SHA, passing local verification, and a previous reviewed SHA matching this lifecycle.
-- Repeat all readiness checks and dispatch one fresh reviewer Task.
+- Repeat all readiness checks, obtain a fresh host-global admission ticket, and dispatch one fresh reviewer Task only after that ticket is granted and requalified.
 - If the rereview is not `pass`, stop for human attention. Never send a second automatic `REVIEW_FIX_REQUEST`.
 
 For every terminal state, report the implementation worker, reviewer Task, PR, exact SHA, deterministic CI state, trusted semantic disposition, findings, routed action if any, retained evidence information, and next human action.

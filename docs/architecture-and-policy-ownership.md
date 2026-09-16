@@ -55,6 +55,7 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `templates/prompts/inspect-project.md` | Project onboarding | Read-only evidence-driven first-project inspection procedure |
 | `config/project-inspection.schema.json` | Project onboarding | Machine-readable inspection result and template-input contract |
 | `lifecycle/ao-refresh-orchestrator` | Lifecycle | Core pre-start fast-forward of AO orchestrator worktrees |
+| `lifecycle/ao-review-queue` | Lifecycle | Deterministic host-global FIFO admission for semantic-review execution |
 | `templates/project/.github/workflows/verify.yml` | Project baseline | CI wrapper invoking `scripts/verify` |
 
 ## Target repository structure
@@ -119,6 +120,7 @@ The structure is intentional: host-global deployable assets are separated from p
 30. `ao-semantic-review-override` is the sole harness-owned manual administrative exception for setting `ao/semantic-review=success` without a semantic PASS result. Qwen must enforce `disable-model-invocation: true`; the operator must invoke it explicitly, supply a reason, and the helper must independently require an open non-draft exact head, semantic review enabled on that tracked head, all other required deterministic checks passing, and an unchanged head immediately before publication. It never updates the AO summary comment and does not alter semantic-review evidence or disposition.
 31. A trusted semantic-review timeout may trigger one automatic native-resume attempt per repository + PR + head SHA, only in the original AO reviewer Task/worktree. AO owns that routing decision; `--resume` is an attempt, not proof that native resume succeeded; the review Skill's existing `timedOut` result field is the machine-readable signal. A second timeout/failure, changed head, or unavailable original reviewer/worktree requires human attention rather than another reviewer or resume loop.
 32. TODO after context-management work: make native resume outcome visible to AO (`resumed` / refusal reason) and investigate Qwen review-worktree lease cleanup before considering any preservation workaround.
+33. Semantic-review execution is host-serialized by the deterministic `ao-review-queue` lifecycle utility before reviewer-Task creation. AO orchestrators own queue participation and grant delivery; workers/reviewers remain queue-unaware. Strict FIFO applies across projects, timeout resumes release and re-enter at the back, queued initial reviews create no reviewer/Monitor/model activity, promoted tickets must requalify exact SHA and deterministic CI, and stale active leases have explicit manual/fail-closed recovery only.
 
 ## Deduplication rules
 
