@@ -104,13 +104,14 @@ A publication failure does not invalidate an independently trustworthy local sem
 For each qualified exact-SHA semantic review:
 
 1. Qualify readiness and deterministic CI under the global orchestrator rules.
-2. Dispatch exactly one semantic review for the expected SHA.
-3. After reviewer-Task creation and assignment delivery succeed, publish or retain the idempotent pending status and `RUNNING` summary.
-4. Receive the terminal reviewer result or failure without busy-polling.
-5. Validate any persisted result against the installed `ao-pr-review` contract and dispatch identity.
-6. Re-read the live PR head.
-7. Publish the exact-SHA terminal status and update the single AO summary.
-8. Route subsequent repair or human action under the global orchestrator rules.
+2. Obtain host-global review admission under the orchestrator rules; queued state creates no GitHub publication.
+3. After admission is granted and requalified, dispatch exactly one semantic review for the expected SHA.
+4. After reviewer-Task creation and assignment delivery succeed, publish or retain the idempotent pending status and `RUNNING` summary.
+5. Receive the terminal reviewer result or failure without busy-polling.
+6. Validate any persisted result against the installed `ao-pr-review` contract and dispatch identity.
+7. Re-read the live PR head.
+8. Publish the exact-SHA terminal status and update the single AO summary.
+9. Route subsequent repair or human action under the global orchestrator rules.
 
 Never merge automatically. Merge remains a human decision.
 

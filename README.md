@@ -127,7 +127,7 @@ The implementation worker never reviews its own change. A dedicated reviewer get
 
 Before reviewer creation, the orchestrator requests one host-global FIFO review slot. A queued initial review is only durable machine identity: no reviewer Task, Monitor, semantic process, polling loop, or recurring model context is consumed. On promotion the owning orchestrator revalidates the exact SHA and deterministic CI before spawning the reviewer. Timeout resumes release their slot and re-enter at the back of the FIFO.
 
-Introducing this queue on an already-running pre-queue host is a one-time quiescent cutover: no AO sessions may remain nonterminated while the host-global rules change. The installer enforces that transition; once the queue is part of the managed install, normal upgrades do not require this special drain.
+When introducing the queue to a pre-queue host, the installer refuses only while an existing semantic-review lock is held. Other AO sessions may remain running; after installation, orchestrators re-read the host-global rules before coordination actions.
 
 ### Long reviews do not block the orchestrator
 

@@ -1,4 +1,5 @@
 import importlib.util
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -64,22 +65,34 @@ class InstallHostTests(unittest.TestCase):
             manifest["files"],
         )
 
-    def test_queue_introduction_requires_global_quiescence(self):
-        from unittest import mock
+    def test_queue_introduction_refuses_only_held_review_lock(self):
         prior = {"schemaVersion": 1, "files": {".qwen/QWEN.md": {}}}
-        response = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout=json.dumps({"data": [{"isTerminated": False}]}), stderr=""
-        )
-        with mock.patch.object(install_host.subprocess, "run", return_value=response):
-            with self.assertRaisesRegex(RuntimeError, "zero nonterminated AO sessions"):
-                install_host.require_queue_upgrade_quiescence(prior, False)
+        lock = self.home / ".local/state/ao-pr-review/locks/o__r/pr-1.lock"
+        lock.parent.mkdir(parents=True)
+        fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(RuntimeError, "legacy semantic review is active"):
+                install_host.require_queue_upgrade_safety(prior, self.home)
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+        install_host.require_queue_upgrade_safety(prior, self.home)
 
-    def test_queue_aware_install_needs_no_later_quiescence(self):
-        from unittest import mock
+    def test_queue_aware_install_needs_no_transition_check(self):
         prior = {"schemaVersion": 1, "files": {str(install_host.QUEUE_TARGET): {}}}
-        with mock.patch.object(install_host.subprocess, "run") as run:
-            install_host.require_queue_upgrade_quiescence(prior, False)
-            run.assert_not_called()
+        install_host.require_queue_upgrade_safety(prior, self.home)
+
+    def test_verify_install_requires_lifecycle_executables(self):
+        self.run_installer()
+        queue = self.home / ".local/bin/ao-review-queue"
+        queue.chmod(0o600)
+        proc = subprocess.run(
+            ["python3", str(VERIFY), "--home", str(self.home), "--skip-runtime-checks"],
+            text=True, capture_output=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("not executable", proc.stderr)
 
     def test_unmanaged_collision_refused_and_replace_backed_up(self):
         target = self.home / ".qwen/QWEN.md"

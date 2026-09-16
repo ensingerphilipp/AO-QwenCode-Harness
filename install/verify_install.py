@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -78,6 +79,8 @@ def main() -> int:
             failures.append(f"missing/non-regular: {target}")
         elif sha(target) != sha(source):
             failures.append(f"content mismatch: {target}")
+        elif rel in {Path(".local/bin/ao-refresh-orchestrator"), Path(".local/bin/ao-review-queue")} and not os.access(target, os.X_OK):
+            failures.append(f"not executable: {target}")
 
     if not args.skip_runtime_checks:
         for command in ("git", "gh", "ao", "qwen", "python3"):

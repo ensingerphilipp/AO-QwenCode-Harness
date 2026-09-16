@@ -22,7 +22,7 @@ The installer deploys the global Qwen context, AO worker/orchestrator rules, sem
 
 Installation state is recorded at `${XDG_STATE_HOME:-$HOME/.local/state}/ao-qwen-code-harness/install-manifest.json`. A repeated identical install is a no-op. A target previously managed by the installer may be upgraded when its installed hash still matches the manifest.
 
-When upgrading an existing pre-queue harness installation to a version that introduces `ao-review-queue`, the installer requires **zero nonterminated AO sessions across all projects** before changing host-global rules. This one-time quiescent cutover prevents already-running orchestrators with the old dispatch policy from bypassing the new host-global admission queue. Fresh installs and later queue-aware upgrades do not require this special cutover.
+When upgrading a pre-queue harness installation, the installer refuses only while an existing `ao-pr-review` lock is held. Other AO sessions may remain running; orchestrators re-read the host-global rules before coordination actions. Fresh installs and later queue-aware upgrades need no special transition check.
 
 If an unmanaged or locally modified target differs from the harness source, installation fails. `--replace` is explicit operator authorization to back up that target under the harness state directory and replace it.
 

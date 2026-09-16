@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import datetime as dt
 import hashlib
 import json
@@ -85,31 +86,32 @@ def load_manifest(path: Path) -> dict:
     return data
 
 
-def require_queue_upgrade_quiescence(prior: dict, skip: bool) -> None:
-    """Fail closed when introducing queue-aware rules to an active old install."""
-    if skip or not prior["files"] or str(QUEUE_TARGET) in prior["files"]:
+def require_queue_upgrade_safety(prior: dict, home: Path) -> None:
+    """Refuse only while a pre-queue semantic review lock is actually held."""
+    if not prior["files"] or str(QUEUE_TARGET) in prior["files"]:
         return
-    proc = subprocess.run(
-        ["ao", "session", "ls", "--all", "--include-terminated", "--json"],
-        text=True, capture_output=True, timeout=15,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            "cannot prove AO quiescence before introducing host-global review queue: "
-            + (proc.stderr or proc.stdout).strip()
-        )
-    try:
-        data = json.loads(proc.stdout).get("data")
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("AO session list is malformed during queue cutover") from exc
-    if not isinstance(data, list):
-        raise RuntimeError("AO session list is malformed during queue cutover")
-    active = [item for item in data if isinstance(item, dict) and item.get("isTerminated") is False]
-    if active:
-        raise RuntimeError(
-            "introducing host-global review queue requires zero nonterminated AO sessions; "
-            f"found {len(active)}"
-        )
+    review_state = Path(
+        os.environ.get("AO_PR_REVIEW_STATE_DIR", home / ".local/state/ao-pr-review")
+    ).expanduser().resolve()
+    lock_root = review_state / "locks"
+    if not lock_root.exists():
+        return
+    for lock_path in sorted(lock_root.glob("*/*.lock")):
+        if not lock_path.is_file() or lock_path.is_symlink():
+            continue
+        fd = os.open(lock_path, os.O_RDWR)
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise RuntimeError(
+                    "cannot introduce host-global review queue while a legacy semantic review is active: "
+                    + str(lock_path)
+                )
+            else:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
 
 
 def install(args: argparse.Namespace) -> int:
@@ -119,7 +121,6 @@ def install(args: argparse.Namespace) -> int:
     manifest_path = state_dir / "install-manifest.json"
     prior = load_manifest(manifest_path)
     versions = check_commands(args.skip_command_check)
-    require_queue_upgrade_quiescence(prior, args.skip_quiescence_check)
     files = managed_sources()
 
     collisions = []
@@ -151,6 +152,8 @@ def install(args: argparse.Namespace) -> int:
         for action, _, target, _, _ in operations:
             print(f"{action.upper():7} {target}")
         return 0
+
+    require_queue_upgrade_safety(prior, home)
 
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_root = state_dir / "backups" / stamp
@@ -201,7 +204,6 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Report changes without writing")
     parser.add_argument("--replace", action="store_true", help="Back up and replace conflicting unmanaged targets")
     parser.add_argument("--skip-command-check", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--skip-quiescence-check", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
         return install(args)
