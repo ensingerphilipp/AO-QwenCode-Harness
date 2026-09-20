@@ -1961,6 +1961,21 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             )
         version_text = (version_proc.stdout or "").strip()
         ctx["qwenVersion"] = version_text.splitlines()[0] if version_text else None
+        if ctx["qwenVersion"] and "0.24.1" in ctx["qwenVersion"]:
+            return finish(
+                ctx,
+                "review_error",
+                error=(
+                    "Qwen Code 0.24.1 is blocked for semantic reviews: a "
+                    "verified live run violated its own bundled review "
+                    "composition/persistence contract and produced no "
+                    "trustworthy native result envelope"
+                ),
+                next_action=(
+                    "Use Qwen Code 0.24.0 or a later version explicitly "
+                    "re-qualified against the ao-pr-review contract."
+                ),
+            )
 
         # Precondition 11: local repository identity snapshot, taken under
         # the lock, after qwen --version, and before the final remote

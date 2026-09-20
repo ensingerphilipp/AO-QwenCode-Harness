@@ -1700,6 +1700,16 @@ class TestNativeCommand(HelperBase):
             self.assertNotIn("--comment", entry["argv"])
         self.assertIn("--resume", self.qwen_review_argv())
 
+    def test_qwen_0241_is_refused_before_semantic_review(self):
+        self.setup_success()
+        self.set_qwen(qwen_version="qwen 0.24.1")
+        result = self.run_helper("5", VALID_SHA)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        doc = self.read_result()
+        self.assertEqual(doc["disposition"], "review_error")
+        self.assertIn("0.24.1 is blocked", doc["error"])
+        self.assertEqual(self.invocations("qwen", "review", "run"), [])
+
     def test_exactly_one_semantic_review_and_one_version_call(self):
         self.setup_success()
         result = self.run_helper("5", VALID_SHA)

@@ -155,7 +155,12 @@ falls back to a fresh review. A native timeout (wrapper `timedOut`, or an exit
 that is neither 0 nor 3) or a wrapper timeout remains `review_error`.
 
 `--comment` is forbidden. `qwen --version` is called once for evidence and
-is not a semantic review.
+is not a semantic review. Qwen Code `0.24.1` is explicitly refused before
+launch: a verified live review session violated its own bundled compose/persist
+sequence (`...-verdict.json` instead of the mandated `...-composed.json`, no
+durable Step-8 artifact, cleanup before persistence) while later narrating a
+different verdict than deterministic `compose-review`. That producer output
+cannot be normalized safely by the harness.
 
 ## Wrapper (qwen-run.json)
 

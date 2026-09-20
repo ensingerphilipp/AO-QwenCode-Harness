@@ -51,6 +51,9 @@ request (`auto` by default, or explicit `low`/`medium`/`high`):
    always passed for PR reviews: it requests native continuation; Qwen confirms
    whether state was actually resumed and may otherwise fall back to a fresh review.
    A native or wrapper timeout remains `review_error`. `--comment` is never passed.
+   Qwen Code 0.24.1 is fail-fast blocked before semantic review because a
+   verified live session violated the bundled compose/persist contract and
+   produced contradictory machine vs narrated verdicts.
 6. Strictly validates the supported native Qwen wrapper + companion shape
    (verdict line, required counts, report path, per-finding required and
    optional renderer fields) and the exact finding vocabulary, computes a
