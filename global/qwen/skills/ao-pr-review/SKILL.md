@@ -18,18 +18,20 @@ evidence and leaves everything in place.
 
 This skill has exactly two supported invocation paths:
 
-1. **Operator**: the operator types the slash command in their own Qwen
-   session.
-2. **Dispatched AO reviewer**: a model acting in a one-shot AO reviewer
-   session dispatched by the orchestrator for this review invokes this
-   skill with exactly the dispatched arguments — a PR number or canonical
-   PR URL, the expected 40-character head SHA, and the effort request
-   (`auto`, `low`, `medium`, or `high`).
+1. **Operator slash invocation**: the operator types `/ao-pr-review` in their
+   own Qwen session. Qwen's slash-command loader writes the arguments to the
+   session-private `<skill-args-file>` described below.
+2. **Dispatched AO reviewer Task**: a model acting in a one-shot AO reviewer
+   session explicitly dispatched by the orchestrator executes the dedicated
+   **AO reviewer Task entry point** below with exactly the assigned canonical
+   PR URL, expected 40-character head SHA, and effort request. This is not a
+   slash-command invocation and therefore does not depend on a
+   `<skill-args-file>` being injected by Qwen's slash-command loader.
 
-A model that was not dispatched for this review does not invoke this
-skill on its own initiative.
+A model that was not dispatched for this review does not use the AO reviewer
+Task entry point on its own initiative.
 
-Supported forms:
+Operator slash forms:
 
 ```text
 /ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
@@ -40,20 +42,22 @@ Supported forms:
 - The default effort request is `auto`; the helper deterministically selects
   `medium` or `high` (policy in `references/policy.md`).
 
-Fail-closed argument handling (both paths):
+Fail-closed operator slash argument handling:
 
-- Arguments pass to the helper **only** via the CLI-injected
+- Operator slash arguments pass to the helper **only** via the CLI-injected
   `<skill-args-file>` path. Never retype, reconstruct, or "correct" the
   PR, SHA, or effort from conversational text, examples, or memory.
-- The helper runs **only** through Qwen's native `monitor` tool (see
-  "Review execution (Qwen Monitor)").
-- If a non-help invocation carries no `<skill-args-file>` tag, report that
-  the invocation carried no argument file and stop — never retype,
+- Every real review launches the helper **only** through Qwen's native
+  `monitor` tool (see "Review execution (Qwen Monitor)").
+- If an operator non-help slash invocation carries no `<skill-args-file>` tag,
+  report that the invocation carried no argument file and stop — never retype,
   reconstruct, or guess arguments.
+- A dispatched AO reviewer Task follows the separate positional entry point
+  below; the orchestrator assignment is its argument authority.
 
-## Mandatory argument handling
+## Operator slash-command argument handling
 
-The supported Qwen Code runtime writes slash-command arguments verbatim to a session-private
+The supported Qwen Code runtime writes operator slash-command arguments verbatim to a session-private
 file and injects its path into the user message as:
 
 ```text
@@ -84,9 +88,11 @@ python3 <skill-dir>/scripts/run_explicit_review.py help
 
 (`help` is not a real review; it prints usage immediately.)
 
-If a non-help invocation does not carry a `<skill-args-file>` tag, do not
-guess arguments: report that the invocation did not carry an argument file
-and stop.
+If an operator non-help slash invocation does not carry a
+`<skill-args-file>` tag, do not guess arguments: report that the invocation did
+not carry an argument file and stop. This check does not apply to the
+explicitly dispatched AO reviewer Task entry point, whose positional arguments
+come from the orchestrator assignment.
 
 ## Review execution (Qwen Monitor)
 
@@ -100,7 +106,7 @@ idle without ever processing the result. The `monitor` tool is the
 supported mechanism for streaming task notifications back to the session
 that owns the review.
 
-Call the `monitor` tool with exactly:
+For an **operator slash invocation**, call the `monitor` tool with exactly:
 
 ```text
 command:
@@ -115,6 +121,11 @@ idle_timeout_ms:
 max_events:
   256
 ```
+
+For a **dispatched AO reviewer Task**, use the positional monitor-envelope
+command defined only in "AO reviewer Task entry point" below, with the same
+`directory`, `idle_timeout_ms`, and `max_events` values. Do not route an AO
+assignment back through the operator slash-command path.
 
 Do not add `&`, `nohup`, a foreground shell call, a second watcher,
 a polling loop, or a scheduler. There is no shell timeout parameter;

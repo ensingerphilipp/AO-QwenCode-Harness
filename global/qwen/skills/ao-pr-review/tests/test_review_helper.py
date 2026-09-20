@@ -3395,7 +3395,7 @@ class TestMonitorExecutionDocs(unittest.TestCase):
         self.assertIn("## Invocation", text)
         self.assertIn("exactly two supported invocation paths", text)
         self.assertIn("Dispatched AO reviewer", text)
-        self.assertIn("exactly the dispatched arguments", text)
+        self.assertIn("exactly the assigned canonical", text)
 
 
 # ---------------------------------------------------------------------------
@@ -3872,6 +3872,34 @@ class TestEnvelopeDocs(unittest.TestCase):
             "reviewKey",
         ):
             self.assertIn(phrase, section)
+
+    def test_ao_rules_delegate_review_transport_to_skill(self):
+        repo_root = SKILL_ROOT.parents[3]
+        orchestrator = (repo_root / "global/ao/rules/orchestratorRules.md").read_text(
+            encoding="utf-8"
+        )
+        agent = (repo_root / "global/ao/rules/agentRules.md").read_text(
+            encoding="utf-8"
+        )
+        for rules in (orchestrator, agent):
+            self.assertIn("AO reviewer Task entry point", rules)
+        self.assertNotIn(
+            "/ao-pr-review <CANONICAL_PR_URL> <EXPECTED_40_CHARACTER_SHA> auto",
+            orchestrator,
+        )
+        self.assertNotIn(
+            "/ao-pr-review <CANONICAL_PR_URL> <EXPECTED_40_CHARACTER_SHA> auto",
+            agent,
+        )
+        self.assertIn("Do not prescribe, reproduce, or reinterpret", orchestrator)
+        self.assertIn("not the operator slash-command path", agent)
+
+    def test_skill_separates_operator_and_ao_argument_authority(self):
+        text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("Operator slash invocation", text)
+        self.assertIn("Dispatched AO reviewer Task", text)
+        self.assertIn("does not depend on a", text)
+        self.assertIn("orchestrator assignment is its argument authority", text)
 
     def test_contract_version_bumped_in_docs(self):
         contract = (SKILL_ROOT / "references" / "contract.md").read_text(

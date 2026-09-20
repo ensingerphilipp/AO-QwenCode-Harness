@@ -45,14 +45,9 @@ Semantic review is a host-constrained resource. Before creating any reviewer Tas
 - Enter this section only while holding the active queue ticket for this exact review identity. Perform one final active/completed reviewer-Task deduplication check before spawning. If the identity is already represented, release the ticket, notify any promoted next orchestrator, and reconcile the existing lifecycle instead; the Skill's per-PR lock remains an additional guard.
 - Spawn one dedicated Qwen reviewer Task labelled `rev-pr-<NUMBER>`.
 - For dedicated reviewers, omit `--prompt` and `--issue` from `ao spawn`; after successful startup send the complete assignment with `ao send` to the returned session ID. Never retry by shrinking prompts. If reviewer creation or assignment delivery fails, release the active queue ticket, notify any promoted next orchestrator, and handle the dispatch failure without publishing a running semantic-review state.
-- The assignment must include `AO_SEMANTIC_REVIEW`, this orchestrator ID, the owning worker ID, canonical PR URL, expected SHA, and reviewer-mode prohibitions.
-- Send the reviewer this exact command:
+- The assignment must include `AO_SEMANTIC_REVIEW`, this orchestrator ID, the owning worker ID, canonical PR URL, expected SHA, `auto` as the effort request, reviewer-mode prohibitions, and an instruction to execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly those assigned values. Do not prescribe, reproduce, or reinterpret the Skill's helper/Monitor command; review execution transport belongs to the Skill.
 
-```text
-/ao-pr-review <CANONICAL_PR_URL> <EXPECTED_40_CHARACTER_SHA> auto
-```
-
-The Skill alone chooses review effort. The reviewer Task owns Qwen Monitor while the review runs; keep the orchestrator available. Do not poll, infer failure from runtime, impose a shorter timeout, or treat heartbeats as results.
+The Skill alone owns review execution and chooses review effort. The reviewer Task owns Qwen Monitor while the review runs; keep the orchestrator available. Do not poll, infer failure from runtime, impose a shorter timeout, or treat heartbeats as results.
 
 Wait for one `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE` message.
 
@@ -67,7 +62,7 @@ For `SEMANTIC_REVIEW_RESULT`:
 
 A missing, malformed, identity-mismatched, cancelled, or transport-failed result is a review error, never a pass. Do not silently retry.
 
-A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. Release the active review-admission ticket first. If the PR head is unchanged and this review identity has not yet been resumed, request a new queue ticket for the same review identity with `resumeAttempt=true`; strict FIFO applies, so this resume joins the back of the host-wide queue. Keep the original reviewer Task/worktree available but idle while queued: do not start Monitor, poll, or send recurring model messages. When the resume ticket is granted and requalified, send that same reviewer Task the same `/ao-pr-review` command so Qwen can attempt native continuation from surviving state. `--resume` is a request, not proof of continuation; do not claim resume succeeded unless Qwen explicitly reports it. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
+A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. Release the active review-admission ticket first. If the PR head is unchanged and this review identity has not yet been resumed, request a new queue ticket for the same review identity with `resumeAttempt=true`; strict FIFO applies, so this resume joins the back of the host-wide queue. Keep the original reviewer Task/worktree available but idle while queued: do not start Monitor, poll, or send recurring model messages. When the resume ticket is granted and requalified, instruct that same reviewer Task to re-execute the installed `ao-pr-review` Skill's AO reviewer Task entry point for the same assigned PR URL, expected SHA, and `auto` effort request so Qwen can attempt native continuation from surviving state. `--resume` is a request, not proof of continuation; do not claim resume succeeded unless Qwen explicitly reports it. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
 
 ## Route the lifecycle result
 

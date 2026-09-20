@@ -2,12 +2,17 @@
 
 ## Invocation
 
-Skill (operator, or dispatched AO reviewer):
+Operator slash invocation:
 
 ```text
 /ao-pr-review <PR-number-or-URL> <EXPECTED-40-CHAR-HEAD-SHA> [auto|low|medium|high]
 /ao-pr-review help
 ```
+
+A dispatched AO reviewer Task does not rely on slash-command dispatch. It uses
+the positional monitor-envelope AO reviewer Task entry point defined in
+`SKILL.md`, with the canonical PR URL, expected SHA, and effort request supplied
+by the orchestrator assignment.
 
 Helper:
 
@@ -21,10 +26,13 @@ python3 <skill-dir>/scripts/run_explicit_review.py --monitor-envelope <PR-number
 python3 <skill-dir>/scripts/run_explicit_review.py help
 ```
 
-- The supported Qwen Code runtime writes slash-command arguments verbatim to a
-  session-private file and injects its path as
-  `<skill-args-file>...</skill-args-file>`. The model passes only that path;
-  it never reconstructs arguments from conversation.
+- For operator slash invocation, the supported Qwen Code runtime writes
+  slash-command arguments verbatim to a session-private file and injects its
+  path as `<skill-args-file>...</skill-args-file>`. The model passes only that
+  path; it never reconstructs arguments from conversation. The dispatched AO
+  reviewer Task entry point is the separate positional monitor-envelope path
+  defined in `SKILL.md`; its argument authority is the explicit orchestrator
+  assignment rather than a slash-generated args file.
 - The args file is read once, at most 4096 bytes, symlinks are refused,
   contents are parsed with `shlex.split`, and raw contents are never
   printed. After parsing, only exactly `help` or exactly 2 or 3 review

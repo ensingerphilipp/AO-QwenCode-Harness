@@ -82,13 +82,7 @@ Never perform a second automatic semantic repair. If a routed request would requ
 
 1. Accept exactly one review assignment from the orchestrator containing the canonical PR URL, expected SHA, owning worker ID, and orchestrator ID.
 2. Outside the review Skill, do not edit, format, stage, commit, push, run project commands, repair findings, post to GitHub, merge, or claim the PR.
-3. Invoke exactly:
-
-```text
-/ao-pr-review <CANONICAL_PR_URL> <EXPECTED_40_CHARACTER_SHA> auto
-```
-
-Do not call the helper, `/review`, or `qwen review run` directly. The installed `ao-pr-review` Skill owns effort selection, monitor execution, result validation, and semantic disposition.
+3. Execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly the assigned canonical PR URL, expected SHA, and `auto` effort request. This AO-dispatched path is not the operator slash-command path. Follow the Skill-owned entry-point procedure exactly; do not substitute `/ao-pr-review`, `/review`, or invoke `qwen review run` yourself, and do not alter or reconstruct the assigned values. The Skill owns helper/Monitor transport, effort selection, result validation, and semantic disposition.
 
 4. Treat monitor heartbeats only as liveness. Do not poll, retry, terminate a quiet review, or impose a shorter timeout than the Skill.
 5. After a trusted terminal result, read the exact `result.json` reported by the Skill and send one `SEMANTIC_REVIEW_RESULT` to the assigned orchestrator, copying values without reinterpretation.

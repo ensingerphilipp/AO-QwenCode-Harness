@@ -1052,8 +1052,8 @@ def compute_disposition(
             "stale",
             None,
             f"Head moved during review (expected {expected}, observed "
-            f"{head_after}); the old verdict is invalidated. Re-run /ao-pr-review "
-            "against the new head SHA.",
+            f"{head_after}); the old verdict is invalidated. Start a fresh "
+            "exact-SHA review against the new head.",
         )
     if head_read_failed or head_after is None:
         return (
@@ -1753,7 +1753,7 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
             ),
             next_action=(
                 f"Run this review from an orchestrator session in {base_repo} "
-                "and re-run /ao-pr-review there."
+                "and start the appropriate review entry point there."
             ),
         )
 
