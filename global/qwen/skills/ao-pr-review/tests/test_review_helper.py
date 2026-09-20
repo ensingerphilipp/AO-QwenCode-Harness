@@ -162,6 +162,35 @@ def main():
         if state.get("create_untracked_file"):
             with open(state["create_untracked_file"], "w", encoding="utf-8") as f:
                 f.write("simulated untracked review artifact\n")
+        transient = state.get("transient_artifacts")
+        if transient:
+            tmp_dir = os.path.join(os.getcwd(), ".qwen", "tmp")
+            os.makedirs(tmp_dir, exist_ok=True)
+            target = transient.get("target", "pr-5")
+            paths = [
+                (
+                    os.path.join(tmp_dir, f"qwen-review-{target}-composed.json"),
+                    json.dumps(transient["composed"]),
+                ),
+                (
+                    os.path.join(tmp_dir, f"qwen-review-{target}-findings.json"),
+                    json.dumps(transient["findings"]),
+                ),
+                (
+                    os.path.join(tmp_dir, f"qwen-review-{target}-report.md"),
+                    transient["report"],
+                ),
+            ]
+            for path, content in paths:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(content)
+            time.sleep(transient.get("hold_seconds", 0.2))
+            if transient.get("cleanup", True):
+                for path, _ in paths:
+                    try:
+                        os.unlink(path)
+                    except FileNotFoundError:
+                        pass
         if state.get("sleep_seconds"):
             time.sleep(state["sleep_seconds"])
         if state.get("wrapper_stdout"):
@@ -377,7 +406,8 @@ class HelperBase(unittest.TestCase):
                  mutate_tracked_file=None, create_untracked_file=None,
                  mutate_and_commit=None, delete_git_dir=None,
                  switch_branch=None, report_dir=None, sleep_seconds=None,
-                 report_md_name="report.md", report_json_name="report.json"):
+                 report_md_name="report.md", report_json_name="report.json",
+                 transient_artifacts=None):
         state = {
             "qwen_version": qwen_version,
             "qwen_exit": qwen_exit,
@@ -397,6 +427,8 @@ class HelperBase(unittest.TestCase):
             state["wrapper_stdout"] = wrapper_stdout
         if sleep_seconds is not None:
             state["sleep_seconds"] = sleep_seconds
+        if transient_artifacts is not None:
+            state["transient_artifacts"] = transient_artifacts
         if mutate_tracked_file is not None:
             state["mutate_tracked_file"] = str(mutate_tracked_file)
         if mutate_and_commit is not None:
@@ -1723,6 +1755,110 @@ class TestNativeCommand(HelperBase):
         stderr_log = (run_dir / "qwen-stderr.log").read_text(encoding="utf-8")
         self.assertIn("boom", stderr_log)
 
+    def test_qwen_0241_broken_envelope_recovers_transient_composed_result(self):
+        finding = {
+            "id": "R1-1",
+            "severity": "Critical",
+            "confidence": "high",
+            "source": "review",
+            "summary": "blocking defect",
+            "shortSummary": "blocking defect",
+            "failureScenario": "trigger causes wrong result",
+            "locations": [{"file": "internal/app/app.go"}],
+        }
+        counts = {
+            "total": 1,
+            "bySeverity": {"Critical": 1, "Suggestion": 0, "Nice to have": 0},
+            "byConfidence": {"high": 1, "low": 0},
+            "held": 0,
+        }
+        wrapper = {
+            "completed": False,
+            "event": None,
+            "verdictLine": None,
+            "baseEvent": None,
+            "cappedBy": [],
+            "downgraded": False,
+            "downgradedFrom": None,
+            "remediation": [],
+            "waivedFixes": [],
+            "composedPath": None,
+            "expectedComposedName": "qwen-review-pr-5-composed.json",
+            "reportPath": None,
+            "childExitCode": 0,
+            "childSignal": None,
+            "timedOut": False,
+            "durationMs": 1234,
+        }
+        self.set_qwen(
+            wrapper_stdout=json.dumps(wrapper),
+            report_dir=None,
+            qwen_exit=1,
+            qwen_version="qwen 0.24.1",
+            transient_artifacts={
+                "target": "pr-5",
+                "composed": {
+                    "runId": "run-0241",
+                    "event": "REQUEST_CHANGES",
+                    "baseEvent": "REQUEST_CHANGES",
+                    "cappedBy": [],
+                    "verdictLine": "Request changes",
+                },
+                "findings": {
+                    "findings": [finding],
+                    "counts": counts,
+                    "outcomesRecorded": False,
+                },
+                "report": "# Native transient report\n",
+                "cleanup": True,
+            },
+        )
+        result = self.run_helper("5", VALID_SHA)
+        self.assertEqual(result.returncode, 5, result.stdout + result.stderr)
+        doc = self.read_result()
+        self.assertEqual(doc["disposition"], "blocked")
+        self.assertEqual(doc["qwenExitCode"], 1)
+        self.assertEqual(doc["nativeResultSource"], "transient-composed")
+        self.assertTrue(doc["completed"])
+        self.assertFalse(doc["timedOut"])
+        self.assertEqual(doc["event"], "REQUEST_CHANGES")
+        self.assertEqual([f["id"] for f in doc["findings"]], ["R1-1"])
+        run_dir = self.run_dirs()[-1]
+        for name in (
+            "native-composed.json",
+            "native-findings.json",
+            "native-report.md",
+            "review.json",
+            "review.md",
+        ):
+            self.assertTrue((run_dir / name).is_file(), name)
+        raw_wrapper = json.loads((run_dir / "qwen-run.json").read_text("utf-8"))
+        self.assertFalse(raw_wrapper["completed"])
+        self.assertIsNone(raw_wrapper["event"])
+
+    def test_qwen_0241_broken_envelope_without_transient_evidence_fails_closed(self):
+        wrapper = {
+            "completed": False,
+            "event": None,
+            "baseEvent": None,
+            "cappedBy": [],
+            "composedPath": None,
+            "expectedComposedName": "qwen-review-pr-5-composed.json",
+            "reportPath": None,
+            "childExitCode": 0,
+            "childSignal": None,
+            "timedOut": False,
+        }
+        self.set_qwen(
+            wrapper_stdout=json.dumps(wrapper),
+            report_dir=None,
+            qwen_exit=1,
+            qwen_version="qwen 0.24.1",
+        )
+        result = self.run_helper("5", VALID_SHA)
+        self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
+        self.assertEqual(self.read_result()["disposition"], "review_error")
+
     def test_exit_3_parsed_completely_with_findings_preserved(self):
         findings = [
             {"id": "R1", "severity": "Suggestion", "confidence": "high",
@@ -2851,7 +2987,7 @@ class TestSkillDocs(unittest.TestCase):
 
     def test_version_files(self):
         version = (SKILL_ROOT / "VERSION").read_text(encoding="utf-8").strip()
-        self.assertEqual(version, "0.3.8")
+        self.assertEqual(version, "0.3.9")
 
     def test_fixture_shape(self):
         fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -3880,7 +4016,7 @@ class TestEnvelopeDocs(unittest.TestCase):
         self.assertIn("contractVersion=6", contract)
         self.assertIn("owner/repo#<PR>@<EXPECTED-40-CHAR-SHA>", contract)
         readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("VERSION=0.3.8", readme)
+        self.assertIn("VERSION=0.3.9", readme)
         self.assertIn("contractVersion=6", readme)
 
 

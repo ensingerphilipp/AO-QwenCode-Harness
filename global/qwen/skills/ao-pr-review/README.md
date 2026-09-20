@@ -1,11 +1,11 @@
-# ao-pr-review — v0.3.8
+# ao-pr-review — v0.3.9
 
 A host-global Qwen Code Skill that runs **one explicit, non-posting native
 Qwen semantic review** of an exact GitHub PR head after required
 deterministic CI passes (required checks excluding only the exact context
 `ao/semantic-review`).
 
-- `VERSION=0.3.8`
+- `VERSION=0.3.9`
 - `contractVersion=6` (result/finding contract)
 - `effortPolicyVersion=3` (explicit low; deterministic medium/high auto selection with hard/soft risk signals)
 
@@ -51,9 +51,12 @@ request (`auto` by default, or explicit `low`/`medium`/`high`):
    always passed for PR reviews: it requests native continuation; Qwen confirms
    whether state was actually resumed and may otherwise fall back to a fresh review.
    A native or wrapper timeout remains `review_error`. `--comment` is never passed.
-6. Strictly validates the supported native Qwen wrapper + companion shape
-   (verdict line, required counts, report path, per-finding required and
-   optional renderer fields) and the exact finding vocabulary, computes a
+6. Strictly validates the supported native Qwen wrapper + companion shape.
+   For Qwen 0.24.1's narrow completed-child/broken-parent-envelope case, it
+   snapshots the exact transient composed verdict, findings, and report while
+   the native run is live and accepts them only when all structured evidence
+   validates; free-form stderr is never parsed as semantic evidence. It then
+   computes a
    disposition (`pass`, `blocked`, `needs_human`, `stale`, `review_error`),
    and writes full evidence. If persisting `result.json` fails, the run is
    `review_error` and the original disposition is never emitted.
@@ -190,7 +193,7 @@ the validated `result.json` named by the `complete` event.
 ## Layout
 
 ```text
-VERSION                                   0.3.8
+VERSION                                   0.3.9
 SKILL.md                                  skill definition (operator or dispatched AO reviewer)
 scripts/run_explicit_review.py            deterministic helper (Python 3, stdlib only)
 references/contract.md                    native Qwen artifact + result contract
@@ -210,7 +213,7 @@ Install an exact copy of this tree (excluding `.git`) at:
 with directories `0755`, Markdown/JSON/Python files `0644`, and
 `scripts/run_explicit_review.py` `0755`.
 
-The versioned ZIP (e.g. `ao-pr-review-v0.3.8.zip`, built with
+The versioned ZIP (e.g. `ao-pr-review-v0.3.9.zip`, built with
 `git archive` from the committed HEAD) is a **source archive**: it
 captures the committed tree and records no live state. Installation from
 it is a plain copy plus an explicit restoration of executable mode

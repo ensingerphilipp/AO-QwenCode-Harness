@@ -179,15 +179,24 @@ baseEvent: APPROVE | COMMENT | REQUEST_CHANGES
 cappedBy: array of strings
 ```
 
-Process exits `0` and `3` are possible completed semantic outcomes and still
-require full parsing — exit 3 is never an early return. Any other exit is
-`review_error`, with all available artifacts preserved.
+Process exits `0` and `3` are the normal completed semantic outcomes and
+still require full parsing — exit 3 is never an early return. A narrow Qwen
+0.24.1 compatibility path also accepts parent exit `1` only when the wrapper
+itself records `childExitCode == 0`, no timeout/signal, the exact expected
+PR composed-artifact name, and null parent verdict/report fields, and the
+harness captured the same run's stamped transient composed verdict, canonical
+findings JSON, and Markdown report while Qwen was running. All three structured
+artifacts must validate; stderr prose is never semantic evidence. Every other
+non-0/3 exit remains `review_error`.
 
 ## Companion (review.json)
 
 The companion path is `reportPath` with its final `.md` replaced by `.json`.
 Native artifacts are copied into the run directory as `review.md` and
-`review.json`; raw files are preserved even when later validation fails.
+`review.json`; raw files are preserved even when later validation fails. The
+0.24.1 transient compatibility path additionally preserves
+`native-composed.json`, `native-findings.json`, and `native-report.md` and
+normalizes only their validated fields into `review.json`.
 
 Required companion fields (supported native Qwen shape):
 
@@ -209,8 +218,10 @@ counts: required object
   held: non-negative integer
   byOutcome (optional): object with non-negative integers for
             fixed, skipped, no_change_needed
-markdownReportPath: required relative path (no leading /) under
-                    .qwen/reviews/, with no .. segment, ending in .md
+markdownReportPath: normally a required relative path (no leading /) under
+                    .qwen/reviews/, with no .. segment, ending in .md;
+                    exactly `review.md` only for the validated transient
+                    compatibility path
 findings is an array
 ```
 
@@ -229,6 +240,9 @@ Exit/event consistency:
 ```text
 exit 3 requires event == REQUEST_CHANGES
 event == REQUEST_CHANGES (with --fail-on request-changes) requires exit 3
+except the validated Qwen 0.24.1 transient compatibility path, where raw
+parent exit 1 is retained as evidence and REQUEST_CHANGES comes from the
+captured stamped composed verdict
 ```
 
 ## Finding vocabulary (exact, case-sensitive)

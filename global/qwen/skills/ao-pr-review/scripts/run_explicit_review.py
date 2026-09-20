@@ -49,6 +49,9 @@ TRANSPORT_MONITOR_ENVELOPE = "monitor-envelope"
 MONITOR_KEEPALIVE_SECONDS = 480
 MONITOR_HEARTBEAT_SECONDS = 960
 MONITOR_EVENT_PREFIX = "AO_PR_REVIEW_EVENT="
+TRANSIENT_CAPTURE_POLL_SECONDS = 0.05
+TRANSIENT_CAPTURE_MTIME_SLACK_SECONDS = 2.0
+TRANSIENT_CAPTURE_MAX_BYTES = 8 * 1024 * 1024
 DEFAULT_STATE_ROOT = Path.home() / ".local/state/ao-pr-review"
 STATE_ROOT_ENV = "AO_PR_REVIEW_STATE_DIR"
 PROJECT_RISK_CONFIG = Path(".qwen/review-config.json")
@@ -806,7 +809,9 @@ def validate_markdown_report_path(path) -> list:
     return errors
 
 
-def validate_companion(doc, pr_number: int, selected_effort: str) -> list:
+def validate_companion(
+    doc, pr_number: int, selected_effort: str, *, allow_local_report: bool = False
+) -> list:
     """Strict validation aligned with the supported native Qwen canonical
     artifact parser. Unknown fields pass through unchecked and are
     preserved verbatim."""
@@ -849,7 +854,9 @@ def validate_companion(doc, pr_number: int, selected_effort: str) -> list:
     if not isinstance(doc.get("findings"), list):
         errors.append("companion findings is not an array")
     errors.extend(validate_counts(doc.get("counts")))
-    errors.extend(validate_markdown_report_path(doc.get("markdownReportPath")))
+    markdown_path = doc.get("markdownReportPath")
+    if not (allow_local_report and markdown_path == "review.md"):
+        errors.extend(validate_markdown_report_path(markdown_path))
     return errors
 
 
@@ -973,6 +980,163 @@ def snapshot_review_artifacts(toplevel: str) -> dict:
             continue
         snapshot[path.name] = sha256_file(path)
     return snapshot
+
+
+def _capture_transient_review_artifacts_once(
+    toplevel: str,
+    run_dir: Path,
+    pr_number: int,
+    started_epoch: float,
+) -> None:
+    """Snapshot exact-name native Qwen transient review artifacts."""
+    tmp_dir = Path(toplevel) / ".qwen" / "tmp"
+    expected = {
+        f"qwen-review-pr-{pr_number}-composed.json": "native-composed.json",
+        f"qwen-review-pr-{pr_number}-findings.json": "native-findings.json",
+        f"qwen-review-pr-{pr_number}-report.md": "native-report.md",
+    }
+    for native_name, saved_name in expected.items():
+        src = tmp_dir / native_name
+        try:
+            st = os.lstat(src)
+        except OSError:
+            continue
+        if not stat.S_ISREG(st.st_mode):
+            continue
+        if st.st_mtime < started_epoch - TRANSIENT_CAPTURE_MTIME_SLACK_SECONDS:
+            continue
+        if st.st_size <= 0 or st.st_size > TRANSIENT_CAPTURE_MAX_BYTES:
+            continue
+        try:
+            data = src.read_bytes()
+        except OSError:
+            continue
+        if not data or len(data) > TRANSIENT_CAPTURE_MAX_BYTES:
+            continue
+        if saved_name.endswith(".json"):
+            try:
+                parsed = json.loads(data.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(parsed, dict):
+                continue
+        try:
+            atomic_write_bytes(run_dir / saved_name, data)
+        except OSError:
+            continue
+
+
+def capture_transient_review_artifacts(
+    toplevel: str,
+    run_dir: Path,
+    pr_number: int,
+    started_epoch: float,
+    stop_event: threading.Event,
+) -> None:
+    while not stop_event.wait(TRANSIENT_CAPTURE_POLL_SECONDS):
+        _capture_transient_review_artifacts_once(
+            toplevel, run_dir, pr_number, started_epoch
+        )
+
+
+def recover_transient_composed_result(
+    wrapper,
+    qwen_exit: int,
+    run_dir: Path,
+    pr_number: int,
+    selected_effort: str,
+):
+    """Recover the Qwen 0.24.1 completed-review / broken-envelope shape."""
+    if qwen_exit != 1 or not isinstance(wrapper, dict):
+        return None
+    expected_shape = (
+        wrapper.get("completed") is False
+        and wrapper.get("timedOut") is False
+        and wrapper.get("event") is None
+        and wrapper.get("baseEvent") is None
+        and wrapper.get("reportPath") is None
+        and wrapper.get("composedPath") is None
+        and wrapper.get("childExitCode") == 0
+        and wrapper.get("childSignal") is None
+        and wrapper.get("expectedComposedName")
+        == f"qwen-review-pr-{pr_number}-composed.json"
+    )
+    if not expected_shape:
+        return None
+
+    composed_path = run_dir / "native-composed.json"
+    findings_path = run_dir / "native-findings.json"
+    report_path = run_dir / "native-report.md"
+    if not all(path.is_file() for path in (composed_path, findings_path, report_path)):
+        return None
+    try:
+        composed = json.loads(composed_path.read_text(encoding="utf-8"))
+        findings_report = json.loads(findings_path.read_text(encoding="utf-8"))
+        report_bytes = report_path.read_bytes()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not report_bytes:
+        return None
+
+    if not _non_empty_str(composed.get("runId")):
+        return None
+    event = composed.get("event")
+    base_event = composed.get("baseEvent")
+    capped_by = composed.get("cappedBy")
+    verdict_line = composed.get("verdictLine")
+    if event not in ALLOWED_EVENTS or base_event not in ALLOWED_EVENTS:
+        return None
+    if not isinstance(capped_by, list) or not all(isinstance(x, str) for x in capped_by):
+        return None
+    if not _non_empty_str(verdict_line):
+        return None
+
+    findings = findings_report.get("findings")
+    counts = findings_report.get("counts")
+    if not isinstance(findings, list):
+        return None
+    if validate_findings(findings) or validate_counts(counts):
+        return None
+    outcomes_recorded = findings_report.get("outcomesRecorded")
+    if outcomes_recorded is not None and not isinstance(outcomes_recorded, bool):
+        return None
+
+    try:
+        atomic_write_bytes(run_dir / "review.md", report_bytes)
+        normalized_companion = {
+            "schemaVersion": 1,
+            "target": f"pr-{pr_number}",
+            "effort": selected_effort,
+            "verdict": {
+                "event": event,
+                "verdictLine": verdict_line,
+                "baseEvent": base_event,
+                "cappedBy": capped_by,
+            },
+            "findings": findings,
+            "counts": counts,
+            "markdownReportPath": "review.md",
+            "nativeSource": "transient-composed",
+        }
+        if outcomes_recorded is not None:
+            normalized_companion["outcomesRecorded"] = outcomes_recorded
+        atomic_write_json(run_dir / "review.json", normalized_companion)
+    except OSError:
+        return None
+
+    normalized_wrapper = dict(wrapper)
+    normalized_wrapper.update(
+        {
+            "completed": True,
+            "timedOut": False,
+            "event": event,
+            "baseEvent": base_event,
+            "cappedBy": capped_by,
+            "verdictLine": verdict_line,
+            "reportPath": str(run_dir / "review.md"),
+        }
+    )
+    return normalized_wrapper, normalized_companion
 
 
 def recover_missing_report_artifacts(
@@ -1166,6 +1330,7 @@ def new_ctx(run_dir: Path, **fields) -> dict:
         "localIdentityBefore": None,
         "localIdentityAfter": None,
         "findings": [],
+        "nativeResultSource": None,
     }
     ctx.update(fields)
     return ctx
@@ -1199,7 +1364,16 @@ def build_result(ctx: dict) -> dict:
     run_dir: Path = ctx["runDir"]
     artifacts = []
     hashes = {}
-    for name in ("preflight.json", "qwen-run.json", "qwen-stderr.log", "review.md", "review.json"):
+    for name in (
+        "preflight.json",
+        "qwen-run.json",
+        "qwen-stderr.log",
+        "native-composed.json",
+        "native-findings.json",
+        "native-report.md",
+        "review.md",
+        "review.json",
+    ):
         path = run_dir / name
         if path.is_file():
             artifacts.append(name)
@@ -1231,6 +1405,7 @@ def build_result(ctx: dict) -> dict:
         "startedAt": ctx["startedAt"],
         "finishedAt": utc_now_iso(),
         "qwenExitCode": ctx["qwenExitCode"],
+        "nativeResultSource": ctx.get("nativeResultSource"),
         "completed": ctx["completed"],
         "timedOut": ctx["timedOut"],
         "event": ctx["event"],
@@ -2051,6 +2226,13 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
         native_review_started = time.time()
         if session is not None:
             session.configure_progress(toplevel, native_review_started)
+        transient_capture_stop = threading.Event()
+        transient_capture_thread = threading.Thread(
+            target=capture_transient_review_artifacts,
+            args=(toplevel, run_dir, pr_number, native_review_started, transient_capture_stop),
+            daemon=True,
+        )
+        transient_capture_thread.start()
         try:
             review_proc = subprocess.run(
                 command,
@@ -2066,6 +2248,12 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                 "review_error",
                 error=f"qwen subprocess failure: {exc}",
                 next_action=EARLY_NEXT_ACTION,
+            )
+        finally:
+            transient_capture_stop.set()
+            transient_capture_thread.join(timeout=1)
+            _capture_transient_review_artifacts_once(
+                toplevel, run_dir, pr_number, native_review_started
             )
 
         # Preserve raw artifacts unconditionally.
@@ -2135,11 +2323,8 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
         # Strict native Qwen result validation.
         validation_errors = []
         ctx["qwenExitCode"] = review_proc.returncode
-        if review_proc.returncode not in (0, 3):
-            validation_errors.append(
-                f"qwen exit {review_proc.returncode} is not an expected completed "
-                "outcome (0 or 3)"
-            )
+        transient_recovered = False
+        transient_companion = None
 
         wrapper = extract_wrapper(review_proc.stdout)
         recovered_companion_src = None
@@ -2148,28 +2333,47 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                 "no wrapper JSON object found in the current qwen stdout"
             )
         else:
-            recovered = recover_missing_report_artifacts(
+            transient = recover_transient_composed_result(
                 wrapper,
-                toplevel,
-                review_artifacts_before,
+                review_proc.returncode,
+                run_dir,
                 pr_number,
                 selected_effort,
             )
-            if recovered is not None:
-                report_src, recovered_companion_src = recovered
-                wrapper = dict(wrapper)
-                wrapper["reportPath"] = str(report_src)
+            if transient is not None:
+                wrapper, transient_companion = transient
+                transient_recovered = True
+                ctx["nativeResultSource"] = "transient-composed"
+            else:
+                recovered = recover_missing_report_artifacts(
+                    wrapper,
+                    toplevel,
+                    review_artifacts_before,
+                    pr_number,
+                    selected_effort,
+                )
+                if recovered is not None:
+                    report_src, recovered_companion_src = recovered
+                    wrapper = dict(wrapper)
+                    wrapper["reportPath"] = str(report_src)
             validation_errors.extend(validate_wrapper(wrapper))
             if isinstance(wrapper.get("completed"), bool):
                 ctx["completed"] = wrapper["completed"]
             if isinstance(wrapper.get("timedOut"), bool):
                 ctx["timedOut"] = wrapper["timedOut"]
+            if not transient_recovered and review_proc.returncode not in (0, 3):
+                validation_errors.append(
+                    f"qwen exit {review_proc.returncode} is not an expected completed "
+                    "outcome (0 or 3)"
+                )
             report_path = wrapper.get("reportPath")
             if isinstance(report_path, str) and report_path:
                 report_src = Path(report_path)
                 if report_src.is_file():
                     try:
-                        copy_bytes(report_src, run_dir / "review.md")
+                        target_report = run_dir / "review.md"
+                        if report_src.resolve() != target_report.resolve():
+                            copy_bytes(report_src, target_report)
                     except OSError as exc:
                         validation_errors.append(f"failed to copy report: {exc}")
                 else:
@@ -2192,16 +2396,21 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                             f"companion file not found: {companion_src}"
                         )
 
-        companion = None
+        companion = transient_companion
         companion_file = run_dir / "review.json"
-        if companion_file.is_file():
+        if companion is None and companion_file.is_file():
             try:
                 companion = json.loads(companion_file.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 validation_errors.append("companion review.json is not valid JSON")
         if companion is not None:
             validation_errors.extend(
-                validate_companion(companion, pr_number, selected_effort)
+                validate_companion(
+                    companion,
+                    pr_number,
+                    selected_effort,
+                    allow_local_report=transient_recovered,
+                )
             )
             verdict = companion.get("verdict")
             if isinstance(verdict, dict):
@@ -2244,7 +2453,7 @@ def run_review(tokens: list, transport: str = TRANSPORT_DIRECT, session=None) ->
                             f"({wrapper_capped!r}) and companion verdict "
                             f"({capped_by!r})"
                         )
-        if ctx["event"] in ALLOWED_EVENTS:
+        if ctx["event"] in ALLOWED_EVENTS and not transient_recovered:
             if review_proc.returncode == 3 and ctx["event"] != "REQUEST_CHANGES":
                 validation_errors.append(
                     f"qwen exit 3 but event is {ctx['event']} "
