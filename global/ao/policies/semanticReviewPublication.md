@@ -74,9 +74,17 @@ The visible comment must begin with `## AO Semantic Review` and concisely includ
 - native and base review events;
 - required deterministic CI result, excluding only the exact `ao/semantic-review` context;
 - semantic disposition;
-- every finding, including informational findings, with stable ID, severity, confidence, summary, and source location;
+- every finding, including informational findings, with stable ID, severity, confidence, the trusted `summary` field (not `shortSummary`), and every source location;
 - `reviewKey` and `attemptId`;
 - recommended next action.
+
+A terminal summary is an actionable review record, not merely an index into local evidence:
+
+- Publish each finding's trusted `summary` verbatim in meaning and detail. Never substitute `shortSummary`, a publisher-authored one-line paraphrase, or "details retained locally" for the required summary.
+- Every unresolved `Critical` finding must be independently understandable and actionable from the GitHub summary without access to local artifacts. In addition to the required fields above, include its `failureScenario`; include the trusted `witness`/evidence description and `suggestedFix` when present. If a suggested fix is absent, do not invent one.
+- For `Suggestion` and `Nice to have` findings, retain the full trusted summary and locations and include `suggestedFix` when present. Additional witness/failure-scenario detail may be condensed before required finding content if the GitHub body-size limit is approached.
+- Size pressure must first remove generic lifecycle boilerplate and optional repeated evidence. Never omit a finding, drop its required fields, or replace its full summary with `shortSummary` merely to fit the comment.
+- If the required terminal content still cannot fit within GitHub's body-size limit, do not publish a misleading partial terminal summary. Report `PUBLICATION_ERROR` and the independently trustworthy semantic result separately under Failure handling; retained local evidence is not a substitute for required published finding detail.
 
 A `PASS` summary must preserve non-blocking findings. Pass means no finding blocks the reviewed head; it does not mean that no findings exist.
 

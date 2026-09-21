@@ -99,7 +99,7 @@ stateDiagram-v2
 4. The orchestrator independently requires an open, non-draft PR and passing required CI for that same SHA.
 5. A fresh dedicated reviewer task executes the installed `ao-pr-review` Skill's AO reviewer Task entry point for the assigned PR, exact SHA, and `auto` effort request.
 6. The Skill runs one non-posting native Qwen review, validates its artifacts, and persists a typed result.
-7. The orchestrator revalidates the result and live PR head before publishing `ao/semantic-review` and one AO-owned summary comment.
+7. The orchestrator revalidates the result and live PR head before publishing `ao/semantic-review` and one AO-owned summary comment whose findings remain actionable without access to local review artifacts.
 8. A clearly actionable, in-scope failure may be routed back once. The new head must pass the entire gate again.
 9. A human decides whether to merge.
 

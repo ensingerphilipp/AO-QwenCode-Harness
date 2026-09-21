@@ -44,6 +44,18 @@ class AOPolicyContractTests(unittest.TestCase):
         ):
             self.assertIn(phrase, ORCH)
 
+    def test_semantic_summary_findings_are_actionable_not_index_only(self):
+        for phrase in (
+            "trusted `summary` field (not `shortSummary`)",
+            "independently understandable and actionable",
+            "`failureScenario`",
+            "`witness`/evidence description",
+            "`suggestedFix`",
+            "Never omit a finding",
+            "`PUBLICATION_ERROR`",
+        ):
+            self.assertIn(phrase, PUB)
+
     def test_worker_completion_handoff_is_explicit_and_regression_protected(self):
         for phrase in (
             "ao send --session <ACTIVE_ORCHESTRATOR_ID>",
