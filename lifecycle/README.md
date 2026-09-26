@@ -19,11 +19,11 @@ Safety behavior:
 - records a per-project/per-worktree result under the XDG state directory;
 - uses a non-blocking per-worktree lock and non-interactive bounded Git commands.
 
-## Reboot reconciliation
+## Reboot/session recovery
 
-`ao-reconcile` is **not** a core startup dependency. Reconciliation of AO session state after host reboot is operational recovery behavior with stronger side effects (session restoration, tmux interaction, waits, and AO-version sensitivity).
+There is no harness-managed reboot reconciliation utility. The former host-local `ao-reconcile` and `ao-reboot-recovery` helpers were intentionally removed on 2026-09-26.
 
-Keep it optional/manual unless later qualification proves a stable AO-supported recovery contract. It must not be installed into automatic startup by the baseline harness.
+Do not restore or install them implicitly. Session recovery should use AO's supported lifecycle behavior plus explicit operator action when needed; automatic reboot recovery is not a baseline harness dependency.
 
 ## `ao-review-queue`
 
