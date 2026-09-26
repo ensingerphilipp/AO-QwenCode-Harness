@@ -2757,6 +2757,7 @@ class TestForbiddenOperations(unittest.TestCase):
         source = HELPER.read_text(encoding="utf-8")
         forbidden_substrings = [
             "ao send",
+            "ao report",
             "set-config",
             "--comment",
             "git commit",

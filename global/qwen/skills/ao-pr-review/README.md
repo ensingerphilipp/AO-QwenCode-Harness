@@ -70,7 +70,7 @@ It never:
 
 - edits application source or commits/pushes/merges anything;
 - posts GitHub reviews or comments;
-- calls `ao send`, changes AO configuration, or creates AO workers;
+- calls `ao send` or `ao report`, changes AO configuration, or creates AO workers;
 - repairs findings;
 - starts a timer, daemon, poller, or scheduler;
 - repeats or schedules a review automatically;

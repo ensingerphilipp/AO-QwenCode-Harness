@@ -57,6 +57,10 @@ def check_commands(skip: bool) -> dict[str, str]:
     required_flags = ("--config-json", "--agent-rules", "--orchestrator-rules", "--post-create", "--worker-agent", "--orchestrator-agent")
     if ao_help.returncode != 0 or any(flag not in ao_help.stdout for flag in required_flags):
         raise RuntimeError("installed AO CLI lacks the required project set-config surface")
+    report_help = subprocess.run(["ao", "report", "--help"], text=True, capture_output=True, timeout=15)
+    report_flags = ("--note", "--checkpoint", "--needs-input", "--stuck", "--done")
+    if report_help.returncode != 0 or any(flag not in report_help.stdout for flag in report_flags):
+        raise RuntimeError("installed AO CLI lacks the required durable report surface")
     review_help = subprocess.run(["qwen", "review", "run", "--help"], text=True, capture_output=True, timeout=15)
     qwen_flags = ("--effort", "--json", "--fail-on", "--approval-mode", "--timeout-minutes")
     if review_help.returncode != 0 or any(flag not in review_help.stdout for flag in qwen_flags):

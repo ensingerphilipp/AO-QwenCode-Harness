@@ -58,16 +58,18 @@ class AOPolicyContractTests(unittest.TestCase):
 
     def test_worker_completion_handoff_is_explicit_and_regression_protected(self):
         for phrase in (
-            "ao send --session <ACTIVE_ORCHESTRATOR_ID>",
+            "ao report --done --note",
+            "ao report --checkpoint --note",
             "TASK_COMPLETE",
             "READY_FOR_REVIEW",
             "READY_FOR_REREVIEW",
             "SEMANTIC_REVIEW_RESULT",
             "SEMANTIC_REVIEW_FAILURE",
             "mandatory task-lifecycle event",
-            "sole fallback exception",
+            "do not fall back to pane text or `ao send`",
         ):
             self.assertIn(phrase, AGENT)
+        self.assertNotIn("ao send --session <ACTIVE_ORCHESTRATOR_ID>", AGENT)
 
 
 if __name__ == "__main__":

@@ -99,6 +99,13 @@ def main() -> int:
             for flag in ("--config-json", "--agent-rules", "--orchestrator-rules", "--post-create"):
                 if flag not in ao.stdout:
                     failures.append(f"AO project set-config lacks {flag}")
+            report = subprocess.run(["ao", "report", "--help"], text=True, capture_output=True, timeout=15)
+            if report.returncode != 0:
+                failures.append("AO report command is unavailable")
+            else:
+                for flag in ("--note", "--checkpoint", "--needs-input", "--stuck", "--done"):
+                    if flag not in report.stdout:
+                        failures.append(f"AO report lacks {flag}")
             review = subprocess.run(["qwen", "review", "run", "--help"], text=True, capture_output=True, timeout=15)
             for flag in ("--effort", "--json", "--fail-on", "--approval-mode", "--timeout-minutes"):
                 if flag not in review.stdout:
