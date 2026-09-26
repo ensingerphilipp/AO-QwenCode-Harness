@@ -84,7 +84,7 @@ Never perform a second automatic semantic repair. If a routed request would requ
 
 ## Reviewer mode
 
-1. Accept exactly one review assignment from the orchestrator containing the canonical PR URL, expected SHA, owning worker ID, and orchestrator ID.
+1. Accept exactly one review assignment from the orchestrator containing the canonical PR URL, expected SHA, and owning worker ID.
 2. Outside the review Skill, do not edit, format, stage, commit, push, run project commands, repair findings, post to GitHub, merge, or claim the PR.
 3. Execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly the assigned canonical PR URL, expected SHA, and `auto` effort request. This AO-dispatched path is not the operator slash-command path. Follow the Skill-owned entry-point procedure exactly; do not substitute `/ao-pr-review`, `/review`, or invoke `qwen review run` yourself, and do not alter or reconstruct the assigned values. The Skill owns helper/Monitor transport, effort selection, result validation, and semantic disposition.
 

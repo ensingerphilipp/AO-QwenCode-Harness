@@ -71,6 +71,11 @@ class AOPolicyContractTests(unittest.TestCase):
             self.assertIn(phrase, AGENT)
         self.assertNotIn("ao send --session <ACTIVE_ORCHESTRATOR_ID>", AGENT)
 
+    def test_orchestrator_never_requests_ao_send_replies(self):
+        self.assertIn("never instruct them to reply with `ao send`", ORCH)
+        self.assertIn("send the complete assignment with `ao send`", ORCH)
+        self.assertNotIn("reply command `ao send", ORCH)
+
 
 if __name__ == "__main__":
     unittest.main()
