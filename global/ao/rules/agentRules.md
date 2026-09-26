@@ -12,6 +12,8 @@ These rules apply to AO task workers. Global Qwen rules and repository-local pro
 
 Every task ends with an explicit report to the active orchestrator, sent with `ao send`. The active orchestrator ID is the one AO provides in your session context ("Orchestrator Coordination"); resolve it at send time and never hard-code a prior session ID.
 
+Any message to the orchestrator must be sent with `ao send`; pane-text replies are not visible to it.
+
 - PR-bearing implementation tasks end with their defined handoff: `READY_FOR_REVIEW`, `READY_FOR_REREVIEW`, or `REVIEW_HANDOFF_BLOCKED`.
 - Reviewer tasks end with `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE`.
 - Every other task (freeform, host-level, read-only, no-change) ends with a generic completion report unless the task specifies a report token or exact format:
