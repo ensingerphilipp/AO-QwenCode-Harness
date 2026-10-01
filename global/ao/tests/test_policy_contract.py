@@ -58,23 +58,30 @@ class AOPolicyContractTests(unittest.TestCase):
 
     def test_worker_completion_handoff_is_explicit_and_regression_protected(self):
         for phrase in (
-            "ao report --done --note",
-            "ao report --checkpoint --note",
+            "ao send --session <ACTIVE_ORCHESTRATOR_ID>",
             "TASK_COMPLETE",
             "READY_FOR_REVIEW",
             "READY_FOR_REREVIEW",
             "SEMANTIC_REVIEW_RESULT",
             "SEMANTIC_REVIEW_FAILURE",
             "mandatory task-lifecycle event",
-            "do not fall back to pane text or `ao send`",
+            "sole fallback exception",
+            "pane text and final assistant prose are not lifecycle handoffs",
         ):
             self.assertIn(phrase, AGENT)
-        self.assertNotIn("ao send --session <ACTIVE_ORCHESTRATOR_ID>", AGENT)
+        for forbidden in (
+            "ao report --done",
+            "ao report --checkpoint",
+            "ao report --needs-input",
+            "ao report --stuck",
+        ):
+            self.assertNotIn(forbidden, AGENT)
 
-    def test_orchestrator_never_requests_ao_send_replies(self):
-        self.assertIn("never instruct them to reply with `ao send`", ORCH)
+    def test_orchestrator_requires_directed_ao_send_replies(self):
+        self.assertIn("Worker/reviewer replies use the `ao send` transport", ORCH)
+        self.assertIn("explicitly require the worker/reviewer to reply with `ao send`", ORCH)
         self.assertIn("send the complete assignment with `ao send`", ORCH)
-        self.assertNotIn("reply command `ao send", ORCH)
+        self.assertNotIn("durable report channel", ORCH)
 
 
 if __name__ == "__main__":

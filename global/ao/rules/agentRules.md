@@ -10,18 +10,16 @@ These rules apply to AO task workers. Global Qwen rules and repository-local pro
 
 ## Task completion report
 
-Worker-to-orchestrator communication uses AO's durable report channel. Preserve the semantic message inside `--note`; do not use `ao send` for worker-to-orchestrator reports.
+Worker-to-orchestrator communication uses directed AO messages. Every message to the orchestrator must use `ao send`; pane text and final assistant prose are not lifecycle handoffs.
 
-- Terminal lifecycle handoffs use `ao report --done --note '<SEMANTIC_MESSAGE>'`.
-- Nonterminal status/acknowledgement replies use `ao report --checkpoint --note '<SEMANTIC_MESSAGE>'`.
-- Use `--needs-input` or `--stuck` only when those states are semantically true; always preserve the semantic message in `--note`.
-- AO limits report notes to 1000 characters. Keep lifecycle notes compact; reference authoritative persisted evidence instead of duplicating verbose findings/logs. If a required semantic note cannot fit without losing required identity, fail closed in the current task rather than silently truncating it.
-- PR-bearing implementation tasks end with `READY_FOR_REVIEW` or `READY_FOR_REREVIEW`.
+- Resolve the active orchestrator ID from AO's current session context ("Orchestrator Coordination") at send time. Never hard-code or reuse a prior orchestrator session ID.
+- Send lifecycle payloads with `ao send --session <ACTIVE_ORCHESTRATOR_ID> --message '<SEMANTIC_MESSAGE>'`.
+- PR-bearing implementation tasks end with `READY_FOR_REVIEW`, `READY_FOR_REREVIEW`, or `REVIEW_HANDOFF_BLOCKED`.
 - Reviewer tasks end with `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE`.
 - Every other task (freeform, host-level, read-only, no-change) ends with a generic completion report unless the task specifies a report token or exact format:
 
 ```text
-ao report --done --note 'TASK_COMPLETE
+ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'TASK_COMPLETE
 {
   "workerSessionId": "<AO_SESSION_ID>",
   "summary": "<ONE_SENTENCE>",
@@ -29,11 +27,10 @@ ao report --done --note 'TASK_COMPLETE
 }'
 ```
 
-- If the task specifies a report token or exact format (for example `SKILL_SYNC_DONE sha=... tests=...`), preserve exactly that semantic message in `--note` instead of `TASK_COMPLETE`.
-- A report printed only as final assistant text is NOT a report — it is not durably delivered to the orchestrator.
+- If the task specifies a report token or exact format (for example `SKILL_SYNC_DONE sha=... tests=...`), send exactly that semantic message instead of `TASK_COMPLETE`.
 - The completion report is a mandatory task-lifecycle event; it is permitted under the general "message the orchestrator only for true blockers" guidance.
-- If `ao report` fails, surface the exact failure in the current task and stop; do not fall back to pane text or `ao send`.
-- After the final report is accepted, stop working and remain available. The orchestrator verifies the reported state and terminates the session.
+- The sole fallback exception is when the active orchestrator ID cannot be resolved. In that case, surface the blocked state in the current task, do not guess or hard-code a session ID, and stop.
+- After sending the final report, stop working and remain available. The orchestrator verifies the reported state and terminates the session.
 
 ## Implementation mode
 
@@ -41,10 +38,10 @@ ao report --done --note 'TASK_COMPLETE
 2. Run `bash scripts/verify`. Do not hand off while the required local gate fails.
 3. For an implementation change intended for integration, commit and push the scoped change and create or update its pull request. Pull-request-based development is the harness baseline; do not invent a PR for a read-only/no-change task.
 4. Resolve the canonical PR URL and exact 40-character head SHA for every PR-bearing handoff.
-5. Persist the `READY_FOR_REVIEW` handoff with `ao report --done --note`, preserving the exact semantic payload.
+5. Send `READY_FOR_REVIEW` to the active orchestrator with `ao send`.
 
 ```text
-ao report --done --note 'READY_FOR_REVIEW
+ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'READY_FOR_REVIEW
 {
   "workerSessionId": "<AO_SESSION_ID>",
   "prNumber": <NUMBER>,
@@ -56,18 +53,18 @@ ao report --done --note 'READY_FOR_REVIEW
 }'
 ```
 
-After reporting the handoff, remain available and stop. The orchestrator owns deterministic CI qualification and, when enabled, semantic-review dispatch. Do not invoke `/ao-pr-review`, `/review`, or `qwen review run` yourself.
+After sending the handoff, remain available and stop. The orchestrator owns deterministic CI qualification and, when enabled, semantic-review dispatch. Do not invoke `/ao-pr-review`, `/review`, or `qwen review run` yourself.
 
-Semantic-review-disabled projects still use the same exact-PR/SHA durable handoff so the orchestrator can qualify deterministic CI without dispatching semantic review.
+If no active orchestrator ID is available for a PR-bearing handoff, surface `REVIEW_HANDOFF_BLOCKED` in the current task and stop. Semantic-review-disabled projects still use the same exact-PR/SHA handoff so the orchestrator can qualify deterministic CI without dispatching semantic review.
 
 ### Routed fixes
 
-- Act on `CI_FIX_REQUEST` only for an in-scope failure routed by the orchestrator. Apply the narrow repair, run `bash scripts/verify`, push, and report a fresh `READY_FOR_REVIEW` for the new head.
+- Act on `CI_FIX_REQUEST` only for an in-scope failure routed by the orchestrator. Apply the narrow repair, run `bash scripts/verify`, push, and send a fresh `READY_FOR_REVIEW` for the new head.
 - Act on `REVIEW_FIX_REQUEST` only for findings the orchestrator explicitly routed as automatically repairable. Independently preserve assigned scope and all project HITL boundaries.
-- Apply all eligible semantic-review fixes together, run `bash scripts/verify`, push, and persist `READY_FOR_REREVIEW` with `ao report --done --note`.
+- Apply all eligible semantic-review fixes together, run `bash scripts/verify`, push, and send `READY_FOR_REREVIEW`.
 
 ```text
-ao report --done --note 'READY_FOR_REREVIEW
+ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'READY_FOR_REREVIEW
 {
   "workerSessionId": "<AO_SESSION_ID>",
   "prNumber": <NUMBER>,
@@ -80,19 +77,19 @@ ao report --done --note 'READY_FOR_REREVIEW
 }'
 ```
 
-Never perform a second automatic semantic repair. If a routed request would require scope expansion, a protected project decision, or uncertain judgment, persist `NEEDS_HUMAN` with `ao report --needs-input --note '<SEMANTIC_MESSAGE>'` instead.
+Never perform a second automatic semantic repair. If a routed request would require scope expansion, a protected project decision, or uncertain judgment, send `NEEDS_HUMAN` to the active orchestrator with `ao send` instead.
 
 ## Reviewer mode
 
-1. Accept exactly one review assignment from the orchestrator containing the canonical PR URL, expected SHA, and owning worker ID.
+1. Accept exactly one review assignment from the orchestrator containing the canonical PR URL, expected SHA, owning worker ID, and orchestrator ID.
 2. Outside the review Skill, do not edit, format, stage, commit, push, run project commands, repair findings, post to GitHub, merge, or claim the PR.
 3. Execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly the assigned canonical PR URL, expected SHA, and `auto` effort request. This AO-dispatched path is not the operator slash-command path. Follow the Skill-owned entry-point procedure exactly; do not substitute `/ao-pr-review`, `/review`, or invoke `qwen review run` yourself, and do not alter or reconstruct the assigned values. The Skill owns helper/Monitor transport, effort selection, result validation, and semantic disposition.
 
 4. Treat monitor heartbeats only as liveness. Do not poll, retry, terminate a quiet review, or impose a shorter timeout than the Skill.
-5. After a trusted terminal result, read the exact `result.json` reported by the Skill and persist one compact `SEMANTIC_REVIEW_RESULT` with `ao report --done --note`. Copy the report identity and authoritative `resultJson` path without reinterpretation; the orchestrator reads all disposition/findings/evidence from that file rather than duplicating them into the 1000-character report note.
+5. After a trusted terminal result, read the exact `result.json` reported by the Skill and send one compact `SEMANTIC_REVIEW_RESULT` to the assigned orchestrator with `ao send`. Copy the result identity and authoritative `resultJson` path without reinterpretation; the orchestrator reads disposition/findings/evidence from that file rather than duplicating them in the message.
 
 ```text
-ao report --done --note 'SEMANTIC_REVIEW_RESULT
+ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_RESULT
 {
   "reviewSessionId": "<AO_SESSION_ID>",
   "reviewKey": "<RESULT_VALUE>",
@@ -101,16 +98,16 @@ ao report --done --note 'SEMANTIC_REVIEW_RESULT
 }'
 ```
 
-If the monitor is cancelled, emits a transport error, or produces no trusted `result.json`, persist one failure message:
+If the monitor is cancelled, emits a transport error, or produces no trusted `result.json`, send one failure message:
 
 ```text
-ao report --done --note 'SEMANTIC_REVIEW_FAILURE
+ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_FAILURE
 {
   "reviewSessionId": "<AO_SESSION_ID>",
   "prUrl": "<ASSIGNED_CANONICAL_URL>",
   "expectedHead": "<ASSIGNED_SHA>",
-  "errorSummary": "<BOUNDED_ERROR_SUMMARY>"
+  "error": "<EXACT_ERROR_TEXT>"
 }'
 ```
 
-Stop after reporting one result or failure. Never route findings, repair, retry, or start another review.
+Stop after sending one result or failure. Never route findings, repair, retry, or start another review.

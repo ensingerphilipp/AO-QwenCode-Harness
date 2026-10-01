@@ -8,7 +8,7 @@ These rules apply to AO orchestrators coordinating implementation workers and de
 - Do not merge, close issues, change AO configuration, or perform unrelated GitHub mutations.
 - Keep AO built-in `autoReview` and competing AO reviewer paths disabled when this harness semantic-review lifecycle is enabled.
 - Resolve the project lifecycle toggle from repository-root `.agent-harness.json` before PR qualification. Semantic review is enabled by default; only a valid schemaVersion 1 config with `semanticReview.enabled` exactly `false` disables it. A malformed/unreadable config is a configuration error requiring human attention, never an implicit disable.
-- Start PR qualification only from `READY_FOR_REVIEW` or `READY_FOR_REREVIEW` preserved in a durable AO report from the owning implementation worker. Treat the semantic payload inside the report note as the worker message; AO's report envelope/attribution does not change its meaning.
+- Start PR qualification only from `READY_FOR_REVIEW` or `READY_FOR_REREVIEW` sent by the owning implementation worker.
 - Treat the installed `ao-pr-review` Skill's persisted result as the semantic authority. Do not recreate its effort-selection, result-validity, or disposition policy in orchestrator prose.
 - If project harness configuration disables semantic review, still qualify the exact PR/SHA and deterministic CI, but do not spawn semantic-review Tasks or create/update semantic-review publication. Report the deterministically qualified head as ready for the next human-controlled integration step.
 
@@ -45,19 +45,19 @@ Semantic review is a host-constrained resource. Before creating any reviewer Tas
 - Enter this section only while holding the active queue ticket for this exact review identity. Perform one final active/completed reviewer-Task deduplication check before spawning. If the identity is already represented, release the ticket, notify any promoted next orchestrator, and reconcile the existing lifecycle instead; the Skill's per-PR lock remains an additional guard.
 - Spawn one dedicated Qwen reviewer Task labelled `rev-pr-<NUMBER>`.
 - For dedicated reviewers, omit `--prompt` and `--issue` from `ao spawn`; after successful startup send the complete assignment with `ao send` to the returned session ID. Never retry by shrinking prompts. If reviewer creation or assignment delivery fails, release the active queue ticket, notify any promoted next orchestrator, and handle the dispatch failure without publishing a running semantic-review state.
-- The assignment must include `AO_SEMANTIC_REVIEW`, the owning worker ID, canonical PR URL, expected SHA, `auto` as the effort request, reviewer-mode prohibitions, and an instruction to execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly those assigned values. Do not prescribe, reproduce, or reinterpret the Skill's helper/Monitor command; review execution transport belongs to the Skill.
-- Worker/reviewer replies arrive through AO's durable report channel as defined by `agentRules`; never instruct them to reply with `ao send` or pane text. Because reports may be batched, do not busy-wait for acknowledgements.
+- The assignment must include `AO_SEMANTIC_REVIEW`, this orchestrator ID, the owning worker ID, canonical PR URL, expected SHA, `auto` as the effort request, reviewer-mode prohibitions, and an instruction to execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly those assigned values. Do not prescribe, reproduce, or reinterpret the Skill's helper/Monitor command; review execution transport belongs to the Skill.
+- Worker/reviewer replies use the `ao send` transport defined by `agentRules`; pane text is not a reply. Every message that expects a reply must provide this orchestrator session ID and explicitly require the worker/reviewer to reply with `ao send`. If an expected acknowledgement is missing, re-probe once; then use AO session/TUI evidence rather than busy-waiting or repeatedly prompting.
 
 The Skill alone owns review execution and chooses review effort. The reviewer Task owns Qwen Monitor while the review runs; keep the orchestrator available. Do not poll, infer failure from runtime, impose a shorter timeout, or treat heartbeats as results.
 
-Wait for one durable reviewer report whose note preserves `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE`.
+Wait for one `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE` message.
 
 ## Validate the returned result
 
 For `SEMANTIC_REVIEW_RESULT`:
 
 1. Read the exact `resultJson` path.
-2. Validate the result according to the installed `ao-pr-review` contract and require its identity to match this dispatch and the semantic payload preserved in the reviewer report note.
+2. Validate the result according to the installed `ao-pr-review` contract and require its identity to match this dispatch and message.
 3. Require the monitor transport expected by the installed Skill for AO review execution.
 4. Re-read the live PR head before acting. If it differs from the reviewed expected head, treat the lifecycle result as stale and discard the old verdict.
 
