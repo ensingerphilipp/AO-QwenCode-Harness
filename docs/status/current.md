@@ -1,6 +1,6 @@
 # Current Harness Implementation Status
 
-Last updated: 2026-09-26
+Last updated: 2026-10-01
 
 ## Completed
 
@@ -26,11 +26,9 @@ K was accepted complete by the user on 2026-09-07 after the AO 0.12.12 configura
 
 ## Current host deployment
 
-- Effective AO runtime: stable **v0.13.1**, release commit `460d9c45f7bf5503808254e0cb02ee52bf537349`, installed user-scoped for `opencode` under `~/.local/opt/agent-orchestrator-0.13.1` with `~/.local/bin/ao` pointing to its daemon binary.
-- The older root-owned Debian package is still recorded as AO 0.13.0 until the operator removes it; it is not the effective `opencode` runtime.
-- AO is intentionally **fully stopped** after the upgrade and stale-session cleanup so the operator can start it manually.
-- Deployed harness globals match repository `main` at `edc8b5cc3b7866864efba4084e44b9c4cb53e29b`; host-global and `premiumizearr-nova` verification pass under AO 0.13.1.
-- Worker/reviewer → orchestrator lifecycle communication uses durable `ao report --note`; terminal handoffs use `--done`, nonterminal replies use `--checkpoint`, and true blocker/input states use their matching report states. Directed orchestrator → session control continues to use `ao send`.
+- Current operator baseline is AO **v0.13.2** with Qwen Code **0.24.7**. The harness qualifies required AO/Qwen behavior by CLI capability rather than version strings.
+- On the `opencode` host inspected during this change, Qwen reports 0.24.7, while `~/.local/bin/ao` still resolves to the prior user-scoped `agent-orchestrator-0.13.1` directory and `ao --version` reports `dev`; that host must be upgraded/repointed before it can be claimed as an independently verified 0.13.2 deployment.
+- Worker/reviewer → orchestrator lifecycle communication uses directed `ao send`; pane/final-assistant text is not a lifecycle handoff. Orchestrator → session assignment/control also uses `ao send`.
 - `ao-reconcile` and `ao-reboot-recovery` were intentionally removed from the current host. They are not baseline harness components and must not be restored implicitly.
 
 ## Remaining
