@@ -27,6 +27,7 @@ K was accepted complete by the user on 2026-09-07 after the AO 0.12.12 configura
 ## Current host deployment
 
 - Current operator baseline is AO **v0.13.2** with Qwen Code **0.24.7**. The harness qualifies required AO/Qwen behavior by CLI capability rather than version strings.
+- The current local-inference host has **three available inference slots**, so its operator-owned Qwen runtime environment caps both tool and native-review workflow concurrency at `3` (`QWEN_CODE_MAX_TOOL_CONCURRENCY=3`, `QWEN_CODE_MAX_WORKFLOW_CONCURRENCY=3`) and uses `QWEN_CODE_WORKFLOW_STALL_SECONDS=600` to tolerate local queueing/compaction/inference silence. These are deployment-specific Qwen runtime settings, not harness-managed defaults; hosts with different inference capacity must tune them independently.
 - On the `opencode` host inspected during this change, Qwen reports 0.24.7, while `~/.local/bin/ao` still resolves to the prior user-scoped `agent-orchestrator-0.13.1` directory and `ao --version` reports `dev`; that host must be upgraded/repointed before it can be claimed as an independently verified 0.13.2 deployment.
 - Worker/reviewer → orchestrator lifecycle communication uses directed `ao send`; pane/final-assistant text is not a lifecycle handoff. Orchestrator → session assignment/control also uses `ao send`.
 - `ao-reconcile` and `ao-reboot-recovery` were intentionally removed from the current host. They are not baseline harness components and must not be restored implicitly.
