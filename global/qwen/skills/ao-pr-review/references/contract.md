@@ -394,9 +394,9 @@ Monitor event rules:
 
 - Only protocol events are emitted — never finding text, native Qwen progress,
   or any externally supplied prose.
-- Qwen Code hard-caps monitor idle timeout at 600000 ms. A fixed 480-second
+- Qwen Code hard-caps monitor idle timeout at 600000 ms. A fixed 560-second
   transport-only `keepalive` prevents idle termination and carries no semantic
-  progress. Rich `heartbeat` events are emitted every 960 seconds; they always
+  progress. Rich `heartbeat` events are emitted every 1120 seconds; they always
   carry type and monotonic elapsed seconds and may additionally carry bounded
   observational `stage`, `progressMode`, agent started/completed/active counts,
   and last-activity timestamp. The combined event count across the 18-hour emergency guard stays below
@@ -499,8 +499,8 @@ the validated `result.json` named by the `complete` event.
 
 - Qwen's native `monitor` streams each bounded protocol event from the
   helper back as a notification to the owning session; the helper's
-  480-second transport keepalive stays below the monitor's 600000 ms idle
-  timeout; richer progress heartbeats are emitted every 960 seconds.
+  560-second transport keepalive stays below the monitor's 600000 ms idle
+  timeout; richer progress heartbeats are emitted every 1120 seconds.
 - The monitor's `completed`/failed/cancelled status is a transport fact: the
   semantic verdict comes only from the validated `result.json`, and a failed
   or cancelled monitor, a missing or invalid `complete` event, or an invalid

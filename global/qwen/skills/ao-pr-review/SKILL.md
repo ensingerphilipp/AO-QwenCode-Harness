@@ -129,13 +129,13 @@ assignment back through the operator slash-command path.
 
 Do not add `&`, `nohup`, a foreground shell call, a second watcher,
 a polling loop, or a scheduler. There is no shell timeout parameter;
-liveness is handled inside the helper by a fixed 480-second transport
+liveness is handled inside the helper by a fixed 560-second transport
 `keepalive` event that stays below Qwen Code's hard 600000 ms monitor idle
 timeout while a long review runs.
 
 The monitor-envelope transport streams only bounded, deterministic protocol
 events (single-line JSON prefixed with `AO_PR_REVIEW_EVENT=`): a fixed
-480-second transport-only `keepalive`, a fixed 960-second `heartbeat` carrying
+560-second transport-only `keepalive`, a fixed 1120-second `heartbeat` carrying
 optional bounded observational progress (`stage`, agent started/completed
 counts, and last activity time; never findings or prose), and exactly one
 terminal event — `complete` when a trustworthy `result.json` was
@@ -266,9 +266,9 @@ result is the stable identity used for deduplication.
   supported notification mechanism, and its result is retrieved explicitly
   from the validated `result.json`.
 - Qwen Code hard-caps monitor `idle_timeout_ms` at 600000, so a fixed
-  480-second transport-only `keepalive` prevents idle termination. It carries
+  560-second transport-only `keepalive` prevents idle termination. It carries
   no semantic progress and is not a review controller.
-- Rich observational `heartbeat` events are emitted every 960 seconds. The
+- Rich observational `heartbeat` events are emitted every 1120 seconds. The
   combined keepalive/heartbeat event count across the 18-hour emergency guard
   remains below `max_events: 256`.
 - Terminating the Qwen session can terminate its in-flight monitor review.

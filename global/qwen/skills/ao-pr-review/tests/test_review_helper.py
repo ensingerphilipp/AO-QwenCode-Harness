@@ -4318,15 +4318,19 @@ class TestReviewProgress(unittest.TestCase):
 
 class TestMonitorSession(unittest.TestCase):
     """In-process unit tests for the protocol emitter; the interval is
-    injected for test speed while the production constant stays 960s."""
+    injected for test speed while the production constants stay 560s/1120s."""
 
-    def test_production_heartbeat_interval_is_960_seconds(self):
+    def test_production_monitor_cadence_is_560_1120_seconds(self):
         module = load_helper_module()
-        self.assertEqual(module.MONITOR_HEARTBEAT_SECONDS, 960)
-        self.assertEqual(module.MONITOR_KEEPALIVE_SECONDS, 480)
+        self.assertEqual(module.MONITOR_HEARTBEAT_SECONDS, 1120)
+        self.assertEqual(module.MONITOR_KEEPALIVE_SECONDS, 560)
         session = module.MonitorSession()
-        self.assertEqual(session._interval, 960)
-        self.assertEqual(session._keepalive_interval, 480)
+        self.assertEqual(session._interval, 1120)
+        self.assertEqual(session._keepalive_interval, 560)
+        self.assertEqual(
+            module.MONITOR_HEARTBEAT_SECONDS,
+            2 * module.MONITOR_KEEPALIVE_SECONDS,
+        )
 
     def test_emergency_guard_fits_below_max_events(self):
         module = load_helper_module()

@@ -125,8 +125,8 @@ disposition's native exit code: 0 pass, 3 review_error, 4 stale, 5 blocked,
   ```
 
   Qwen Code hard-caps monitor idle timeout at 600000 ms, so a fixed
-  480-second transport-only `keepalive` prevents idle termination. A richer
-  960-second `heartbeat` may carry bounded observational stage/agent-count
+  560-second transport-only `keepalive` prevents idle termination. A richer
+  1120-second `heartbeat` may carry bounded observational stage/agent-count
   metadata parsed mechanically from the inner Qwen transcript and subagent journals; `complete` is emitted only after the current-run
   `result.json` is durably persisted and revalidated for this exact
   invocation, with metadata that exactly matches that result; heartbeat
@@ -167,8 +167,8 @@ the validated `result.json` named by the `complete` event.
 
 - Qwen's native `monitor` streams each bounded protocol event from the
   helper back as a notification to the owning session; the helper's
-  480-second transport keepalive stays below the monitor's 600000 ms idle
-  timeout; richer progress heartbeats are emitted every 960 seconds.
+  560-second transport keepalive stays below the monitor's 600000 ms idle
+  timeout; richer progress heartbeats are emitted every 1120 seconds.
 - The monitor's `completed`/failed/cancelled status is a transport fact: the
   semantic verdict comes only from the validated `result.json`, and a failed
   or cancelled monitor, a missing or invalid `complete` event, or an invalid

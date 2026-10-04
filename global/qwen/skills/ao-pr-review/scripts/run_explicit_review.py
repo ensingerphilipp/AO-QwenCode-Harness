@@ -46,8 +46,8 @@ TRANSPORT_MONITOR_ENVELOPE = "monitor-envelope"
 # Qwen Monitor hard-caps idle_timeout_ms at 600000 (10 minutes). A tiny
 # transport-only keepalive therefore remains below that cap, while the richer
 # observational progress heartbeat is intentionally less frequent.
-MONITOR_KEEPALIVE_SECONDS = 480
-MONITOR_HEARTBEAT_SECONDS = 960
+MONITOR_KEEPALIVE_SECONDS = 560
+MONITOR_HEARTBEAT_SECONDS = 1120
 MONITOR_EVENT_PREFIX = "AO_PR_REVIEW_EVENT="
 DEFAULT_STATE_ROOT = Path.home() / ".local/state/ao-pr-review"
 STATE_ROOT_ENV = "AO_PR_REVIEW_STATE_DIR"
@@ -1540,7 +1540,7 @@ class MonitorSession:
 
     def _heartbeat_worker(self):
         # Production ticks at the transport keepalive interval. Every second
-        # tick is the richer 960-second progress heartbeat. Tests that inject
+        # tick is the richer 1120-second progress heartbeat. Tests that inject
         # an interval keep the historical one-event-per-tick behavior.
         next_heartbeat = self._start + self._interval
         while not self._stop_event.is_set():
