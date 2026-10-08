@@ -69,7 +69,7 @@ AO remains the workflow authority. Qwen's native `/review` is the semantic autho
 1. Implementation worker verifies, pushes and hands off the canonical PR plus exact head SHA.
 2. AO independently checks open/non-draft state and required deterministic CI for that SHA.
 3. AO obtains the host-global FIFO slot. AO-managed review effort is fixed to native `high` because native PR publication is high-only. Before creating a reviewer, native argument parsing must prove the verdict turn is non-posting (`comment.effective == false`) for the exact PR command.
-4. AO creates one dedicated **Chat/ACP** Qwen reviewer and establishes `reviewKey = owner/repo#PR@SHA`.
+4. AO creates one dedicated **Chat/ACP** Qwen reviewer with explicit `--kind worker --harness qwen --mode chat` (never inferred from defaults) and establishes `reviewKey = owner/repo#PR@SHA`.
 5. AO sends one native `/review <PR-URL> --effort high` turn to that same session.
 6. Qwen completes the verdict-only native review normally and reports semantic event metadata to AO; the same reviewer conversation remains available.
 7. AO revalidates the live head. If unchanged it sends one publish authorization; if moved/cancelled it sends discard.

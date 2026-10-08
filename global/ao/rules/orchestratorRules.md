@@ -51,7 +51,13 @@ Before creating the reviewer, run Qwen's deterministic argument parser for the e
 
 ## Dispatch the persistent reviewer
 
-- Spawn exactly one dedicated Qwen reviewer Task labelled `rev-pr-<NUMBER>` in **Chat/ACP mode**. Persistent idle follow-up turns are required by this protocol.
+- Spawn exactly one dedicated Qwen reviewer Task using this explicit command shape (substitute only project id and PR number):
+
+```text
+ao spawn --project <PROJECT_ID> --kind worker --harness qwen --mode chat --name rev-pr-<NUMBER>
+```
+
+  `--kind worker` and `--mode chat` are mandatory and MUST NOT be omitted or inferred from AO defaults, stale command guides, or Qwen memories. Persistent idle follow-up turns are required by this protocol. The installed harness rules and current `ao spawn --help` surface are authoritative for this dispatch.
 - Omit issue/prompt payloads at spawn; after startup send the complete setup assignment with directed `ao send` using Chat steering.
 - Setup assignment MUST contain `AO_SEMANTIC_REVIEW`, orchestrator ID, owning worker ID, canonical PR URL, expected SHA, reviewKey, selected effort (`high`), repair cycle, and the reviewer-mode rules below.
 - The setup assignment is descriptive protocol context only. Even though it names future publish/discard controls, it MUST NOT be interpreted as a request to publish this review. Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH` control turn for the exact identity grants publication authorization.

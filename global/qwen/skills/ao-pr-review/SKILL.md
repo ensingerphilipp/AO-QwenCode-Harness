@@ -19,7 +19,7 @@ AO-managed publish-capable reviews always use native `high` effort. Qwen's suppo
 
 1. AO qualifies PR identity and deterministic CI and obtains the host-global review slot.
 2. AO preflights the exact review arguments with native `review parse-args` and requires `comment.effective == false`; a standing operator `review.comment: true` blocks AO review because it would post before AO authorization.
-3. AO creates exactly one persistent Qwen Chat/ACP reviewer and assigns effort `high`.
+3. AO creates exactly one persistent Qwen Chat/ACP reviewer with explicit `ao spawn --kind worker --harness qwen --mode chat`; mode/kind must never be left to defaults or stale AO/Qwen documentation. The reviewer is assigned effort `high`.
 4. Reviewer receives `AO_SEMANTIC_REVIEW` setup and acknowledges `SEMANTIC_REVIEW_READY` without starting review.
 5. AO sends one native `/review <canonical-url> --effort high` turn to that same session.
 6. Reviewer performs native review without posting, lets the native run complete normally, and reports the semantic event metadata to AO.

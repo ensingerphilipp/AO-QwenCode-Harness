@@ -14,8 +14,13 @@ class AOPolicyContractTests(unittest.TestCase):
         for phrase in ('.agent-harness.json', 'enabled by default', 'exactly `false` disables'):
             self.assertIn(phrase, ORCH)
 
+    def test_reviewer_spawn_is_explicit_chat_worker(self):
+        command = 'ao spawn --project <PROJECT_ID> --kind worker --harness qwen --mode chat --name rev-pr-<NUMBER>'
+        self.assertIn(command, ORCH)
+        self.assertIn('MUST NOT be omitted or inferred', ORCH)
+
     def test_persistent_chat_native_review_is_the_only_backbone(self):
-        for phrase in ('Chat/ACP mode', '/review <canonical-PR-URL> --effort high', 'same idle reviewer'):
+        for phrase in ('--kind worker --harness qwen --mode chat', '/review <canonical-PR-URL> --effort high', 'same idle reviewer'):
             self.assertIn(phrase, ORCH)
         for forbidden in ('run_explicit_review.py --monitor-envelope', 'resultJson', 'Qwen Monitor while the review runs'):
             self.assertNotIn(forbidden, ORCH)
