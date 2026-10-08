@@ -15,7 +15,7 @@ Worker-to-orchestrator communication uses directed AO messages. Every message to
 - Resolve the active orchestrator ID from AO's current session context ("Orchestrator Coordination") at send time. Never hard-code or reuse a prior orchestrator session ID.
 - Send lifecycle payloads with `ao send --session <ACTIVE_ORCHESTRATOR_ID> --message '<SEMANTIC_MESSAGE>'`.
 - PR-bearing implementation tasks end with `READY_FOR_REVIEW`, `READY_FOR_REREVIEW`, or `REVIEW_HANDOFF_BLOCKED`.
-- Reviewer tasks end with `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE`.
+- Reviewer verdict handoff is `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE`; a successful reviewer remains alive after `SEMANTIC_REVIEW_RESULT` for the required AO publish/discard continuation and finally ends with `SEMANTIC_REVIEW_PUBLISHED`, `SEMANTIC_REVIEW_DISCARDED`, or `SEMANTIC_REVIEW_PUBLICATION_FAILURE`.
 - Every other task (freeform, host-level, read-only, no-change) ends with a generic completion report unless the task specifies a report token or exact format:
 
 ```text
@@ -30,7 +30,7 @@ ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'TASK_COMPLETE
 - If the task specifies a report token or exact format (for example `SKILL_SYNC_DONE sha=... tests=...`), send exactly that semantic message instead of `TASK_COMPLETE`.
 - The completion report is a mandatory task-lifecycle event; it is permitted under the general "message the orchestrator only for true blockers" guidance.
 - The sole fallback exception is when the active orchestrator ID cannot be resolved. In that case, surface the blocked state in the current task, do not guess or hard-code a session ID, and stop.
-- After sending the final report, stop working and remain available. The orchestrator verifies the reported state and terminates the session.
+- After sending a genuinely terminal report, stop working and remain available. A reviewer verdict handoff is intentionally nonterminal until AO resolves publish/discard.
 
 ## Implementation mode
 
@@ -60,8 +60,8 @@ If no active orchestrator ID is available for a PR-bearing handoff, surface `REV
 ### Routed fixes
 
 - Act on `CI_FIX_REQUEST` only for an in-scope failure routed by the orchestrator. Apply the narrow repair, run `bash scripts/verify`, push, and send a fresh `READY_FOR_REVIEW` for the new head.
-- Act on `REVIEW_FIX_REQUEST` only for findings the orchestrator explicitly routed as automatically repairable. Independently preserve assigned scope and all project HITL boundaries.
-- Apply all eligible semantic-review fixes together, run `bash scripts/verify`, push, and send `READY_FOR_REREVIEW`.
+- Act on `REVIEW_FIX_REQUEST` only for the exact PR/reviewed SHA routed by the orchestrator. Inspect the **native Qwen GitHub review** and apply all eligible in-scope review fixes together. Do not depend on an AO paraphrase or second finding projection. Independently preserve assigned scope and project HITL boundaries.
+- After semantic repair, run `bash scripts/verify`, push, and send `READY_FOR_REREVIEW`.
 
 ```text
 ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'READY_FOR_REREVIEW
@@ -72,42 +72,127 @@ ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'READY_FOR_REREVIEW
   "previousReviewedSha": "<OLD_SHA>",
   "headSha": "<NEW_40_CHARACTER_SHA>",
   "localVerification": "bash scripts/verify: pass",
-  "addressedFindingIds": ["<ID>"],
   "repairCycle": 1
 }'
 ```
 
 Never perform a second automatic semantic repair. If a routed request would require scope expansion, a protected project decision, or uncertain judgment, send `NEEDS_HUMAN` to the active orchestrator with `ao send` instead.
 
-## Reviewer mode
+## Reviewer mode: persistent native review
 
-1. Accept exactly one review assignment from the orchestrator containing the canonical PR URL, expected SHA, owning worker ID, and orchestrator ID.
-2. Outside the review Skill, do not edit, format, stage, commit, push, run project commands, repair findings, post to GitHub, merge, or claim the PR.
-3. Execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly the assigned canonical PR URL, expected SHA, and `auto` effort request. This AO-dispatched path is not the operator slash-command path. Follow the Skill-owned entry-point procedure exactly; do not substitute `/ao-pr-review`, `/review`, or invoke `qwen review run` yourself, and do not alter or reconstruct the assigned values. The Skill owns helper/Monitor transport, effort selection, result validation, and semantic disposition.
+A reviewer is one dedicated persistent **Qwen Chat/ACP** session. The semantic review and any later native publication continuation must occur in this same conversation.
 
-4. Treat monitor heartbeats only as liveness. Do not poll, retry, terminate a quiet review, or impose a shorter timeout than the Skill.
-5. After a trusted terminal result, read the exact `result.json` reported by the Skill and send one compact `SEMANTIC_REVIEW_RESULT` to the assigned orchestrator with `ao send`. Copy the result identity and authoritative `resultJson` path without reinterpretation; the orchestrator reads disposition/findings/evidence from that file rather than duplicating them in the message.
+1. Accept exactly one setup assignment from the orchestrator containing the canonical PR URL, expected SHA, owning worker ID, assigned orchestrator ID, exact `reviewKey`, repair cycle, and selected effort. The selected effort MUST be `high`.
+2. Do not edit, format, stage, commit, push, run implementation repair work, merge, label, claim the PR, or perform unrelated GitHub mutation.
+3. Do not invoke `qwen review run`, Qwen Monitor, the retired `run_explicit_review.py`, a second Qwen process, or `/ao-pr-review`.
+4. Treat the setup assignment as protocol description only, not publication authorization. Mentions of `publish`, `post comments`, or `AO_SEMANTIC_REVIEW_PUBLISH` inside setup/rules describe a future state and MUST NOT satisfy Qwen's user-authorized posting gate. Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH` control turn from the assigned orchestrator for the exact identity authorizes publication.
+5. Record the assigned lifecycle identity in this conversation and acknowledge setup:
+
+```text
+ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_READY
+{
+  "reviewSessionId": "<AO_SESSION_ID>",
+  "reviewKey": "<ASSIGNED_REVIEW_KEY>",
+  "prUrl": "<ASSIGNED_CANONICAL_URL>",
+  "expectedHead": "<ASSIGNED_SHA>",
+  "selectedEffort": "high"
+}'
+```
+
+Send READY as the final lifecycle action of this setup turn, then end the Chat turn immediately. Do not begin semantic review until the orchestrator starts a separate idle Chat turn containing the native slash command.
+
+### Native review turn
+
+The only valid AO review turn is:
+
+```text
+/review <ASSIGNED_CANONICAL_URL> --effort high
+```
+
+Any other target or effort is a protocol error: send `SEMANTIC_REVIEW_FAILURE` and do not start review. The native Step 1 parse verdict must also have `comment.effective == false`; if it is true, stop before semantic execution/publication and report `SEMANTIC_REVIEW_FAILURE` because AO publication authorization has not yet occurred.
+
+This is a **two-phase AO-managed review**. The publication decision is intentionally unresolved while the semantic verdict is produced. Execute the native `/review` normally to completion, including its normal persistence and cleanup behavior. Do not post comments/reviews during this verdict phase and do not rerun the review merely to report its result.
+
+After native review completion, send one compact lifecycle envelope using the completed native review's semantic values:
 
 ```text
 ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_RESULT
 {
   "reviewSessionId": "<AO_SESSION_ID>",
-  "reviewKey": "<RESULT_VALUE>",
-  "attemptId": "<RESULT_VALUE>",
-  "resultJson": "<ABSOLUTE_PATH>"
+  "reviewKey": "<ASSIGNED_REVIEW_KEY>",
+  "prUrl": "<ASSIGNED_CANONICAL_URL>",
+  "reviewedHead": "<NATIVE_REVIEWED_HEAD_SHA>",
+  "selectedEffort": "<NATIVE_EFFORT>",
+  "semanticEvent": "<APPROVE|COMMENT|REQUEST_CHANGES>",
+  "baseEvent": "<APPROVE|COMMENT|REQUEST_CHANGES>"
 }'
 ```
 
-If the monitor is cancelled, emits a transport error, or produces no trusted `result.json`, send one failure message:
+Do not send findings through AO. Native artifacts and any native follow-up state remain Qwen-owned; AO does not validate, recompose, or prescribe their internal handling. Send `SEMANTIC_REVIEW_RESULT` as the final lifecycle action of this review turn, then end the Chat turn immediately and remain idle.
+
+If native review is interrupted or cannot produce a terminal semantic event, send one failure message, retain whatever native evidence remains, and do not retry automatically:
 
 ```text
 ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_FAILURE
 {
   "reviewSessionId": "<AO_SESSION_ID>",
+  "reviewKey": "<ASSIGNED_REVIEW_KEY>",
   "prUrl": "<ASSIGNED_CANONICAL_URL>",
   "expectedHead": "<ASSIGNED_SHA>",
   "error": "<EXACT_ERROR_TEXT>"
 }'
 ```
 
-Stop after sending one result or failure. Never route findings, repair, retry, or start another review.
+### Publication continuation
+
+Only an `AO_SEMANTIC_REVIEW_PUBLISH` control turn from the assigned orchestrator for the exact assigned `reviewKey` and expected head authorizes publication.
+
+On that message:
+
+1. Verify the control identity against this conversation's assignment. Any mismatch => `SEMANTIC_REVIEW_PUBLICATION_FAILURE`, no GitHub mutation.
+2. Continue the **already-completed** native review through Qwen's normal native `post comments` follow-up in this same session. Do not start a fresh `/review` or manually construct a submit payload.
+3. Let Qwen's native review machinery own its normal follow-up mechanics, presubmit, convergence, provider downgrade rules, event/body/inline composition, submission, and any internal recovery it normally performs. AO adds no temporary-state rules.
+4. AO authorization remains bound to the assigned exact SHA. If the native follow-up determines that the live PR head no longer equals the assigned reviewed SHA, do not publish the old verdict and do not convert this authorization into a review of the new SHA. Send `SEMANTIC_REVIEW_PUBLICATION_FAILURE` with `reasonCode: "head_moved"` and the observed `liveHead`; AO must qualify the new head separately.
+5. Send on success:
+
+```text
+ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_PUBLISHED
+{
+  "reviewSessionId": "<AO_SESSION_ID>",
+  "reviewKey": "<ASSIGNED_REVIEW_KEY>",
+  "reviewedHead": "<ASSIGNED_SHA>"
+}'
+```
+
+For any publication failure, send exactly one bounded failure envelope:
+
+```text
+ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_PUBLICATION_FAILURE
+{
+  "reviewSessionId": "<AO_SESSION_ID>",
+  "reviewKey": "<ASSIGNED_REVIEW_KEY>",
+  "expectedHead": "<ASSIGNED_SHA>",
+  "reasonCode": "<head_moved|identity_mismatch|submit_failed|other>",
+  "liveHead": "<40_CHAR_SHA_OR_NULL>",
+  "error": "<BOUNDED_ERROR_TEXT>"
+}'
+```
+
+Any publication error is terminal for the AO lifecycle unless Qwen's native follow-up itself resolves it within the same authorized turn. AO does not send a second publish authorization and does not start a fresh review.
+
+### Discard continuation
+
+Only an `AO_SEMANTIC_REVIEW_DISCARD` control turn from the assigned orchestrator for the exact assigned identity authorizes discard.
+
+Do not post anything. Send:
+
+```text
+ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_DISCARDED
+{
+  "reviewSessionId": "<AO_SESSION_ID>",
+  "reviewKey": "<ASSIGNED_REVIEW_KEY>",
+  "expectedHead": "<ASSIGNED_SHA>"
+}'
+```
+
+After `SEMANTIC_REVIEW_PUBLISHED`, `SEMANTIC_REVIEW_DISCARDED`, or `SEMANTIC_REVIEW_PUBLICATION_FAILURE`, stop. Never route findings, repair, retry, or merge.

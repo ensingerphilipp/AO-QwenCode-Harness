@@ -17,7 +17,6 @@ These files are production template sources for repositories managed by the AO +
 - `ARCHITECTURE.md` owns technical structure, flows, dependencies, approved decisions, and architectural risks.
 - `QWEN.md` is intentionally thin and points Qwen to the project contracts.
 - `.qwen/review-rules.md` contains only project-specific semantic invariants.
-- `.qwen/review-config.json` adds project-specific semantic-review risk metadata; it cannot remove global risk rules.
 - `.agent-harness.json` controls project-level harness lifecycle features; semantic review defaults to enabled.
 - `.github/workflows/verify.yml` delegates mechanical verification to `bash scripts/verify` after project-specific CI setup.
 - `scripts/verify` is supplied by the verification profile or generated from inspected project tooling; exact checks are not duplicated here.

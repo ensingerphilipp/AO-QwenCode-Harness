@@ -55,11 +55,12 @@ other GitHub/AO mutation as part of this Skill.
 The helper fails closed unless all of these hold on the exact live PR head:
 
 - the PR is open and not draft;
-- tracked `.agent-harness.json` enables semantic review;
+- tracked `.agent-harness.json` explicitly enables semantic review; this is intentionally stricter than the normal lifecycle's default-enabled behavior because a manual success override requires explicit repository consent;
 - at least one other required check exists and every such check passes;
 - the PR head is unchanged immediately before publication.
 
+This is intentionally stricter than the normal lifecycle's default-enabled interpretation: a manual administrative bypass requires explicit tracked opt-in on the exact head.
+
 It publishes only `ao/semantic-review=success` on that exact head with the
 canonical PR URL as target URL, then verifies the resulting status. It never
-changes the semantic-review evidence or disposition and never creates an AO
-semantic-review summary comment.
+changes the semantic-review evidence or disposition and never creates or alters a native Qwen review or inline comments.

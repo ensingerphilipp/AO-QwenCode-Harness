@@ -22,7 +22,7 @@ run "Lifecycle refresh integration tests" \
   python3 -m unittest discover -s lifecycle/tests -v
 run "Host install and project initialization tests" \
   python3 -m unittest discover -s install/tests -v
-run "Semantic review Skill regression suite" \
+run "Semantic review protocol regression suite" \
   python3 -m unittest discover -s global/qwen/skills/ao-pr-review/tests -v
 run "Manual semantic-review override Skill regression suite" \
   python3 -m unittest discover -s global/qwen/skills/ao-semantic-review-override/tests -v

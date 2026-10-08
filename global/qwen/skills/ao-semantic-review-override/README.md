@@ -33,12 +33,15 @@ The deterministic helper refuses publication unless:
 - the PR belongs to the current repository, is open, and is not draft;
 - the exact PR head has tracked `.agent-harness.json` with semantic review
   explicitly enabled;
+  this is intentionally stricter than the normal lifecycle's default-enabled behavior because a manual success override requires explicit repository consent;
 - at least one other required check exists and all such checks pass;
 - the PR head is unchanged immediately before status publication.
 
+This override precondition is intentionally stricter than the normal lifecycle's default-enabled interpretation: an administrative bypass requires explicit tracked opt-in on the exact head.
+
 It publishes only `ao/semantic-review=success` on that exact SHA, uses the
 canonical PR URL as target URL, and verifies the resulting status. It does not
-change review evidence/disposition, publish the AO summary comment, or perform
+change review evidence/disposition, create or alter a native Qwen review, or perform
 any merge/review/code/AO lifecycle mutation.
 
 ## Installation

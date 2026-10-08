@@ -28,6 +28,28 @@ REQUIRED_COMMANDS = ("git", "gh", "ao", "qwen", "python3")
 QUEUE_TARGET = Path(".local/bin/ao-review-queue")
 
 
+
+PROBE_REVIEW_URL = "https://github.com/ao-harness/probe/pull/1"
+
+
+def validate_review_preflight_probe(raw: str) -> None:
+    try:
+        verdict = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Qwen review parse-args preflight returned invalid JSON") from exc
+    target = verdict.get("target") if isinstance(verdict, dict) else None
+    comment = verdict.get("comment") if isinstance(verdict, dict) else None
+    if not isinstance(target, dict) or target.get("type") != "pr-url" or target.get("url") != PROBE_REVIEW_URL:
+        raise RuntimeError("Qwen review parse-args preflight returned an unexpected target")
+    if verdict.get("effort") != "high":
+        raise RuntimeError("Qwen review parse-args preflight did not preserve explicit high effort")
+    if not isinstance(comment, dict) or comment.get("requested") is not False:
+        raise RuntimeError("Qwen review parse-args preflight returned malformed comment metadata")
+    if comment.get("effective") is not False:
+        raise RuntimeError("operator review.comment must be disabled for AO two-phase semantic review")
+    if verdict.get("extraTokens") != [] or verdict.get("unknownFlags") != []:
+        raise RuntimeError("Qwen review parse-args preflight returned unexpected extra input")
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as handle:
@@ -58,13 +80,24 @@ def check_commands(skip: bool) -> dict[str, str]:
     if ao_help.returncode != 0 or any(flag not in ao_help.stdout for flag in required_flags):
         raise RuntimeError("installed AO CLI lacks the required project set-config surface")
     send_help = subprocess.run(["ao", "send", "--help"], text=True, capture_output=True, timeout=15)
-    send_flags = ("--session", "--message")
+    send_flags = ("--session", "--message", "--steer")
     if send_help.returncode != 0 or any(flag not in send_help.stdout for flag in send_flags):
-        raise RuntimeError("installed AO CLI lacks the required directed send surface")
-    review_help = subprocess.run(["qwen", "review", "run", "--help"], text=True, capture_output=True, timeout=15)
-    qwen_flags = ("--effort", "--json", "--fail-on", "--approval-mode", "--timeout-minutes")
-    if review_help.returncode != 0 or any(flag not in review_help.stdout for flag in qwen_flags):
-        raise RuntimeError("installed Qwen Code lacks the required native review-run surface")
+        raise RuntimeError("installed AO CLI lacks the required directed Chat steering surface")
+    spawn_help = subprocess.run(["ao", "spawn", "--help"], text=True, capture_output=True, timeout=15)
+    spawn_flags = ("--harness", "--kind", "--mode", "--name")
+    if spawn_help.returncode != 0 or any(flag not in spawn_help.stdout for flag in spawn_flags) or "chat" not in spawn_help.stdout:
+        raise RuntimeError("installed AO CLI lacks the required Chat-mode spawn surface")
+    qwen_help = subprocess.run(["qwen", "--help"], text=True, capture_output=True, timeout=15)
+    if qwen_help.returncode != 0 or "--acp" not in qwen_help.stdout:
+        raise RuntimeError("installed Qwen Code lacks ACP support required by persistent reviewers")
+    review_probe = subprocess.run(
+        ["qwen", "review", "parse-args", "--stdin"],
+        input=f"{PROBE_REVIEW_URL} --effort high\n",
+        text=True, capture_output=True, timeout=15,
+    )
+    if review_probe.returncode != 0:
+        raise RuntimeError("installed Qwen Code review parse-args preflight is unavailable")
+    validate_review_preflight_probe(review_probe.stdout)
     gh_help = subprocess.run(["gh", "pr", "checks", "--help"], text=True, capture_output=True, timeout=15)
     if gh_help.returncode != 0 or any(flag not in gh_help.stdout for flag in ("--required", "--json")):
         raise RuntimeError("installed GitHub CLI lacks required PR-checks support")
@@ -129,6 +162,8 @@ def install(args: argparse.Namespace) -> int:
 
     collisions = []
     operations = []
+    stale_operations = []
+    current_targets = {str(rel_target) for rel_target in files.values()}
     for source, rel_target in files.items():
         target = home / rel_target
         new_hash = sha256(source)
@@ -149,12 +184,32 @@ def install(args: argparse.Namespace) -> int:
         else:
             operations.append(("create", source, target, rel_target, new_hash))
 
+    # A source-tree deletion is a managed deployment change too. Refuse to
+    # silently leave a locally modified retired executable behind.
+    for rel_text, entry in prior["files"].items():
+        if rel_text in current_targets:
+            continue
+        rel_target = Path(rel_text)
+        target = home / rel_target
+        if not target.exists():
+            continue
+        if not target.is_file() or target.is_symlink():
+            collisions.append(f"retired managed target is not a regular file: {target}")
+            continue
+        unchanged = sha256(target) == entry.get("sha256")
+        if not unchanged and not args.replace:
+            collisions.append(f"locally modified retired managed target: {target}")
+            continue
+        stale_operations.append((target, rel_target, not unchanged))
+
     if collisions:
         raise RuntimeError("refusing installation:\n  - " + "\n  - ".join(collisions))
 
     if args.dry_run:
         for action, _, target, _, _ in operations:
             print(f"{action.upper():7} {target}")
+        for target, _, _ in stale_operations:
+            print(f"DELETE  {target}")
         return 0
 
     require_queue_upgrade_safety(prior, home)
@@ -175,13 +230,12 @@ def install(args: argparse.Namespace) -> int:
             os.replace(temp, target)
         installed[str(rel_target)] = {"sha256": new_hash, "mode": oct(source.stat().st_mode & 0o777)}
 
-    # Remove stale files previously managed by this installer only when unchanged.
-    for rel_text, entry in prior["files"].items():
-        if rel_text in installed:
-            continue
-        target = home / rel_text
-        if target.is_file() and not target.is_symlink() and sha256(target) == entry.get("sha256"):
-            target.unlink()
+    for target, rel_target, backup_required in stale_operations:
+        if backup_required:
+            backup = backup_root / rel_target
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(target, backup)
+        target.unlink()
 
     state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     manifest = {

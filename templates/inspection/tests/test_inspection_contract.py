@@ -10,6 +10,13 @@ PROMPT = (ROOT / "templates/prompts/inspect-project.md").read_text()
 
 
 class InspectionContractTests(unittest.TestCase):
+    def test_schema_version_and_removed_review_risk(self):
+        self.assertEqual(SCHEMA["properties"]["schemaVersion"]["const"], 2)
+        self.assertNotIn("reviewRisk", SCHEMA["required"])
+        self.assertNotIn("reviewRisk", SCHEMA["properties"])
+        self.assertNotIn("reviewRisk", PROMPT)
+        self.assertNotIn("review-config.json", PROMPT)
+
     def test_schema_requires_exact_project_template_tokens(self):
         expected = set()
         for tokens in MANIFEST["renderedFiles"].values():

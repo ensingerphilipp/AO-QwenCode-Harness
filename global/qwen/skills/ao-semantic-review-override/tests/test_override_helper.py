@@ -23,6 +23,14 @@ class OverrideHelperTests(unittest.TestCase):
         self.assertEqual(mod.parse_invocation('84 "migration exception"'),
                          ("84", "migration exception"))
 
+    def test_override_documents_stricter_explicit_consent(self):
+        root = Path(__file__).resolve().parents[1]
+        readme = (root / "README.md").read_text()
+        skill = (root / "SKILL.md").read_text()
+        for text in (readme, skill):
+            self.assertIn("intentionally stricter than the normal lifecycle", text)
+            self.assertIn("explicit repository consent", text)
+
     def test_description_is_bounded(self):
         text = mod.desired_description("a" * 40, "x" * 300)
         self.assertLessEqual(len(text), 140)

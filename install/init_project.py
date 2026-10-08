@@ -32,11 +32,11 @@ def require_clean_repo(repo: Path) -> None:
 
 
 def validate_inspection(doc: dict, repo: Path) -> None:
-    top_keys = {"schemaVersion", "repository", "facts", "templateValues", "verification", "reviewRisk", "decisionsRequired"}
+    top_keys = {"schemaVersion", "repository", "facts", "templateValues", "verification", "decisionsRequired"}
     if not isinstance(doc, dict) or set(doc) != top_keys:
         raise RuntimeError("inspection has missing or unknown top-level fields")
-    if doc.get("schemaVersion") != 1:
-        raise RuntimeError("inspection schemaVersion must be 1")
+    if doc.get("schemaVersion") != 2:
+        raise RuntimeError("inspection schemaVersion must be 2")
     repository = doc.get("repository")
     if not isinstance(repository, dict) or set(repository) != {"root", "remote", "defaultBranch"}:
         raise RuntimeError("inspection repository object is malformed")
@@ -77,12 +77,6 @@ def validate_inspection(doc: dict, repo: Path) -> None:
                 raise RuntimeError(f"inspection verification.{group} contains an empty command field")
             if not isinstance(item.get("evidence"), list) or not item["evidence"]:
                 raise RuntimeError(f"inspection verification.{group} command lacks evidence")
-    risk = doc.get("reviewRisk")
-    if not isinstance(risk, dict) or set(risk) != {"highRiskPaths", "softRiskPaths", "highRiskLabels", "evidence"}:
-        raise RuntimeError("inspection reviewRisk object is malformed")
-    for key in ("highRiskPaths", "softRiskPaths", "highRiskLabels"):
-        if not isinstance(risk[key], list) or any(not isinstance(v, str) or not v.strip() for v in risk[key]):
-            raise RuntimeError(f"inspection reviewRisk.{key} is malformed")
 
 
 def render_text(text: str, values: dict[str, str]) -> str:
@@ -126,15 +120,7 @@ def planned_files(doc: dict, semantic_enabled: bool) -> dict[Path, tuple[str, in
     for rel in MANIFEST["copyFiles"]:
         source = TEMPLATE_ROOT / rel
         text = source.read_text()
-        if rel == ".qwen/review-config.json":
-            risk = doc.get("reviewRisk", {})
-            text = json.dumps({
-                "schemaVersion": 2,
-                "highRiskPaths": risk.get("highRiskPaths", []),
-                "softRiskPaths": risk.get("softRiskPaths", []),
-                "highRiskLabels": risk.get("highRiskLabels", []),
-            }, indent=2) + "\n"
-        elif rel == ".agent-harness.json":
+        if rel == ".agent-harness.json":
             text = json.dumps({"schemaVersion": 1, "semanticReview": {"enabled": semantic_enabled}}, indent=2) + "\n"
         files[Path(rel)] = (text, 0o644)
     files[Path("scripts/verify")] = (verification_script(doc), 0o755)

@@ -21,9 +21,9 @@ Update this document in the same commit whenever an architectural assumption, ow
 | Layer | Owns | Must not own |
 |---|---|---|
 | Global Qwen | Universal engineering behavior and project-contract discovery | AO orchestration protocol or product-specific rules |
-| Global AO worker | Worker/reviewer lifecycle, handoffs, routed repair behavior | Semantic disposition definitions or project architecture |
-| Global AO orchestrator | Coordination, readiness, dispatch, routing, publication authorization | Product implementation or semantic-review policy internals |
-| Global review Skill | Review execution contract, effort policy, semantic disposition | AO lifecycle routing or GitHub publication |
+| Global AO worker | Worker/reviewer lifecycle, handoffs, routed repair behavior | Semantic reasoning, publication projection, or project architecture |
+| Global AO orchestrator | Coordination, readiness, admission, fixed-high review dispatch, native publication authorization, status, routing | Product implementation or semantic findings/convergence |
+| Native Qwen `/review` + `ao-pr-review` support package | Semantic reasoning, findings, convergence, native GitHub review publication/cleanup; fixed high-effort AO review contract | AO scheduling, exact-head authorization, repair routing, merge |
 | Global operator Skill | Explicit human-only administrative escape hatches | Autonomous/model invocation or normal lifecycle ownership |
 | Project contract | Goals, scope, HITL, public contracts, architecture, project invariants | Generic host-wide behavior |
 | Deterministic verification | Exact mechanical checks | Semantic policy or product decisions |
@@ -37,15 +37,14 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `global/ao/rules/agentRules.md` | Global AO | Worker and reviewer lifecycle |
 | `global/ao/rules/orchestratorRules.md` | Global AO | Coordination and routing lifecycle |
 | `global/ao/policies/semanticReviewPublication.md` | Global AO | GitHub semantic-review publication lifecycle |
-| `global/qwen/skills/ao-pr-review/references/contract.md` | Global review Skill | Technical review/result contract |
-| `global/qwen/skills/ao-pr-review/references/policy.md` | Global review Skill | Effort selection and semantic disposition |
-| `global/qwen/skills/ao-pr-review/SKILL.md` | Global review Skill | Qwen execution procedure |
+| `global/qwen/skills/ao-pr-review/references/contract.md` | Global review support | Persistent reviewer lifecycle-envelope contract |
+| `global/qwen/skills/ao-pr-review/references/policy.md` | Global review support | Fixed high-effort contract and narrow semantic-event lifecycle mapping |
+| `global/qwen/skills/ao-pr-review/SKILL.md` | Global review support | Two-phase persistent native-review protocol |
 | `global/qwen/skills/ao-semantic-review-override/` | Global operator Skill | Human-only administrative override of the `ao/semantic-review` required status |
 | `templates/project/PROJECT.md` | Project baseline | Product scope, HITL and public-contract template |
 | `templates/project/ARCHITECTURE.md` | Project baseline | Architecture and technical-decision template |
 | `templates/project/QWEN.md` | Project baseline | Thin repository-local Qwen entry point |
 | `templates/project/.qwen/review-rules.md` | Project baseline | Project-only semantic invariants |
-| `templates/project/.qwen/review-config.json` | Project baseline | Machine-readable additive review risk metadata |
 | `templates/project/.agent-harness.json` | Project baseline | Project lifecycle feature configuration; semantic review enabled by default |
 | `templates/project/template-manifest.json` | Project baseline | Required rendering/copy/merge contract for initialization |
 | `config/project-harness.schema.json` | Harness configuration | Machine-readable schema for `.agent-harness.json` |
@@ -97,11 +96,11 @@ The structure is intentional: host-global deployable assets are separated from p
 7. `scripts/verify` is the mandatory stable verification interface for every managed project; its implementation is stack-specific.
 8. CI invokes the same `scripts/verify` entry point so local and CI verification do not drift.
 9. The harness repository itself follows the same rule: root `scripts/verify` is its deterministic authority and `.github/workflows/verify.yml` delegates to it.
-10. `ao-pr-review` owns review execution, result validity, effort selection and semantic disposition. AO consumes those results and owns lifecycle actions.
+10. Native Qwen `/review` in one persistent Chat/ACP reviewer owns semantic execution, findings, convergence, GitHub review projection/submission and cleanup. The `ao-pr-review` package is protocol/policy documentation only; AO owns lifecycle identity, admission, native publication authorization, status and routing. AO-managed reviews always use native `high` because Qwen publication is high-only.
 11. Semantic review is enabled by default but may be disabled explicitly for a project. A disabled lifecycle still requires the same exact PR/SHA handoff and deterministic CI qualification; it stops before semantic-review dispatch and creates no semantic-review publication.
 12. Pull-request-based development is the harness baseline for implementation changes intended for integration; read-only or no-change tasks do not invent pull requests.
-13. Project-specific semantic-review risk metadata is additive only and schema-validated through `.qwen/review-config.json`; repositories cannot remove global protected paths or labels. The review Skill reads policy only from the tracked repository `HEAD`, rejects untracked local policy, and fails closed on malformed configuration before semantic inference.
-14. Project lifecycle feature flags belong in `.agent-harness.json`, not in Qwen review-risk configuration. Its schema is host-independent; semantic review defaults to enabled.
+13. The previous project `.qwen/review-config.json` risk-to-effort configuration is retired because AO-managed native publication requires `high` effort unconditionally. Existing repository copies are legacy and are neither read nor rewritten by the new lifecycle.
+14. Project lifecycle feature flags belong in `.agent-harness.json`. Its schema is host-independent; semantic review defaults to enabled.
 15. Project template sources may contain only tokens declared by `template-manifest.json`. Initialization must fail closed until every required token is resolved from inspected facts or explicit human decisions.
 16. Verification profiles separate inspection facts from render tokens and declare both machine-readably. Profile candidates are selected only when supported by repository evidence; they cannot silently introduce new quality policy.
 17. First-project inspection is read-only and evidence-driven. Its machine result must populate every project-template token or identify an explicit human decision; missing facts are never converted into guessed policy.
@@ -111,26 +110,28 @@ The structure is intentional: host-global deployable assets are separated from p
 21. Host-global installation is manifest-tracked and idempotent: unmanaged/local target conflicts fail closed unless the operator explicitly requests replacement, in which case originals are backed up first.
 22. `templateValues.CI_SETUP_STEPS` is the single inspection/rendering authority for project CI setup. The verification proposal contains executable local checks only; CI setup is not duplicated in a second inspection field.
 23. Fresh-project initialization validates inspection structure with stdlib checks, refuses unresolved decisions or conflicting repository contracts, renders before AO registration, verifies the host-global install before registration, and rolls back a newly created AO registration if configuration fails.
-24. Installer compatibility is capability-based where possible: AO `project set-config` and directed `ao send`, Qwen `review run`, and GitHub CLI `pr checks` required flag surfaces are probed instead of relying only on version strings.
+24. Installer compatibility is capability-based where possible: AO `project set-config`, Chat-capable `ao spawn`, directed/steered `ao send`, Qwen ACP plus native review-argument parsing/non-posting preflight, and GitHub CLI `pr checks` required flag surfaces are probed instead of relying only on version strings.
 25. AO orchestrators resolve semantic-review enablement from repository-root `.agent-harness.json`: enabled is the default, only an explicit valid `false` disables it, and malformed/unreadable lifecycle configuration fails closed to human attention.
 26. Existing-project migration is transactional at the host/AO layer: it requires global AO quiescence, snapshots the complete prior AO config plus host deployment state, preserves unknown/project-specific config keys, and automatically rolls back host files, installer state, and AO config if cutover fails.
 27. Existing-project repository contracts are never rewritten by host migration. Contract deduplication occurs in a normal project branch/PR after host/AO cutover, preserving repository ownership and reviewability.
 28. Deployment verification may be project-aware: when a project ID is supplied, it must assert the exact short AO rule-loader strings, Qwen worker/orchestrator selection, and refresh hook after registration or migration.
 29. AO Qwen startup may create an untracked repository-root `.qwen/settings.json` containing AO hook wiring before the orchestrator refresh hook runs. The refresh helper treats exactly that untracked path as runtime state, but continues to fail closed on every other tracked modification or untracked path; Git itself remains responsible for refusing an upstream fast-forward that would overwrite the runtime file.
-30. `ao-semantic-review-override` is the sole harness-owned manual administrative exception for setting `ao/semantic-review=success` without a semantic PASS result. Qwen must enforce `disable-model-invocation: true`; the operator must invoke it explicitly, supply a reason, and the helper must independently require an open non-draft exact head, semantic review enabled on that tracked head, all other required deterministic checks passing, and an unchanged head immediately before publication. It never updates the AO summary comment and does not alter semantic-review evidence or disposition.
-31. A trusted semantic-review timeout may trigger one automatic native-resume attempt per repository + PR + head SHA, only in the original AO reviewer Task/worktree. AO owns that routing decision; `--resume` is an attempt, not proof that native resume succeeded; the review Skill's existing `timedOut` result field is the machine-readable signal. A second timeout/failure, changed head, or unavailable original reviewer/worktree requires human attention rather than another reviewer or resume loop.
-32. TODO after context-management work: make native resume outcome visible to AO (`resumed` / refusal reason) and investigate Qwen review-worktree lease cleanup before considering any preservation workaround.
-33. Semantic-review execution is host-serialized by the deterministic `ao-review-queue` lifecycle utility before reviewer-Task creation. AO orchestrators own queue participation and grant delivery; workers/reviewers remain queue-unaware. Strict FIFO applies across projects, timeout resumes release and re-enter at the back, queued initial reviews create no reviewer/Monitor/model activity, promoted tickets must requalify exact SHA and deterministic CI, and stale active leases have explicit manual/fail-closed recovery only. Introducing the queue to a pre-queue host is blocked only while an existing `ao-pr-review` lock is held; unrelated AO sessions may continue because orchestrators re-read host-global rules before coordination actions.
-34. AO rules own reviewer lifecycle and authorization, not the review transport command. `orchestratorRules` dispatches an explicit `AO_SEMANTIC_REVIEW` assignment and points the reviewer at the installed `ao-pr-review` Skill's AO reviewer Task entry point; `agentRules` requires that entry point for reviewer mode. The Skill alone defines the helper/Monitor invocation. Operator `/ao-pr-review ...` slash invocation remains a separate path that uses Qwen's CLI-injected `<skill-args-file>`; AO `ao send` assignments must not be treated as native slash-command invocation.
-35. Worker/reviewer-to-orchestrator lifecycle communication uses directed `ao send`; orchestrator-to-session control also uses `ao send`. Exact worker reply syntax and lifecycle payloads belong in `agentRules`, not architecture prose.
+30. `ao-semantic-review-override` is the sole harness-owned manual administrative exception for setting `ao/semantic-review=success` without a semantic PASS result. Qwen must enforce `disable-model-invocation: true`; the operator must invoke it explicitly, supply a reason, and the helper must independently require an open non-draft exact head, semantic review enabled on that tracked head, all other required deterministic checks passing, and an unchanged head immediately before publication. It never creates or alters a native Qwen review and does not alter semantic-review evidence or disposition.
+31. Persistent reviewer continuity is part of semantic-review correctness. The same dedicated Qwen Chat/ACP session receives setup, native `/review`, verdict handoff, and the later publish/discard decision. Session loss or interruption fails closed; there is no automatic timeout/resume or replacement-reviewer publication path.
+32. Native review publication is two-phase at the AO lifecycle level, not by freezing Qwen internals. The initial `/review` may complete its normal persistence/cleanup; the same persistent reviewer conversation later receives exactly one AO publish/discard decision and Qwen owns the mechanics of its native `post comments` follow-up.
+33. Semantic-review execution is host-serialized by the deterministic `ao-review-queue`. The ticket is held from reviewer creation through the AO publish/discard phase and terminal acknowledgement. Queued reviews create no reviewer/model activity. Promoted tickets must requalify exact SHA and deterministic CI; stale active tickets require explicit manual/fail-closed recovery. The legacy `resumeAttempt` ticket field is retained only for reading/writing compatible queue state; new v0.4 requests expose no resume flag and always store it as false.
+34. AO authorizes publication but does not compose it. Qwen native `/review` owns event/body/inline selection, anchor resolution, convergence, submit and cleanup. AO publishes only the `ao/semantic-review` status; the historical AO semantic-review summary comment is retired and left untouched.
+35. Worker/reviewer-to-orchestrator lifecycle communication uses directed `ao send`; persistent reviewer control uses Chat steering so idle follow-up turns can be started deterministically. Exact syntax and payloads belong in `agentRules`, not architecture prose.
+36. AO two-phase review requires the initial native `/review` to be non-posting. Before reviewer creation, AO uses Qwen's native argument parser to require `comment.effective == false`; operator-scope `review.comment: true` is therefore an incompatible host setting and installation verification must fail closed rather than modify it. The reviewer independently checks the same native Step 1 fact as defense in depth.
+37. Reviewer setup/rules may describe future publication controls but never constitute current publication authorization. Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH` turn for the exact review identity authorizes the native `post comments` continuation.
 
 ## Deduplication rules
 
 A rule may be referenced in multiple places, but it is defined normatively in one place only.
 
 - Verification mechanics are defined by `scripts/verify`, not repeated in review rules or architecture prose.
-- Semantic disposition is defined by the review Skill policy, not redefined by AO rules.
-- Technical review/result validity is defined by the review Skill contract, not redefined by publication policy.
+- Semantic meaning and finding convergence belong to native Qwen `/review`; AO maps only the semantic event/base-event lifecycle outcome defined by the support policy.
+- The `ao-pr-review` contract defines the persistent lifecycle envelope and native follow-up ownership; it intentionally does not validate Qwen semantic artifacts.
 - Product HITL boundaries are defined by `PROJECT.md`; global rules only require Qwen/AO to respect them.
 - Architecture facts are defined by `ARCHITECTURE.md`; review rules may reference them but should not duplicate them.
 - Universal Qwen behavior is defined by global `QWEN.md`, not copied into every project.
@@ -151,7 +152,7 @@ Verification profiles cover Go, Node/TypeScript, Python, Rust, and Go+Node compo
 
 ## Project onboarding
 
-A read-only first-project inspection must identify languages, package managers, build systems, tests, lint/type checks, CI, public APIs, security and persistence boundaries, generated files, high-risk paths, deployment assumptions, and existing contributor/agent guidance.
+A read-only first-project inspection must identify languages, package managers, build systems, tests, lint/type checks, CI, public APIs, security and persistence boundaries, generated files, deployment assumptions, and existing contributor/agent guidance.
 
 It then proposes project-specific contents for the baseline files without inventing unsupported policy. Observed facts and human decisions must remain clearly separated.
 

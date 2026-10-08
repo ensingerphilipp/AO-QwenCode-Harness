@@ -2,87 +2,106 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
-ORCH = (ROOT / "global/ao/rules/orchestratorRules.md").read_text()
-PUB = (ROOT / "global/ao/policies/semanticReviewPublication.md").read_text()
-AGENT = (ROOT / "global/ao/rules/agentRules.md").read_text()
+ORCH = (ROOT / 'global/ao/rules/orchestratorRules.md').read_text()
+PUB = (ROOT / 'global/ao/policies/semanticReviewPublication.md').read_text()
+AGENT = (ROOT / 'global/ao/rules/agentRules.md').read_text()
+SKILL = (ROOT / 'global/qwen/skills/ao-pr-review/SKILL.md').read_text()
+CONTRACT = (ROOT / 'global/qwen/skills/ao-pr-review/references/contract.md').read_text()
 
 
 class AOPolicyContractTests(unittest.TestCase):
-    def test_semantic_toggle_is_explicit_and_fail_closed(self):
-        for phrase in (
-            ".agent-harness.json",
-            "enabled by default",
-            "exactly `false` disables",
-            "malformed/unreadable config",
-            "never an implicit disable",
-        ):
+    def test_semantic_toggle_remains_fail_closed(self):
+        for phrase in ('.agent-harness.json', 'enabled by default', 'exactly `false` disables'):
             self.assertIn(phrase, ORCH)
 
-    def test_disabled_review_never_publishes(self):
-        self.assertIn("semantic review is disabled", ORCH)
-        self.assertIn("If semantic review is disabled", PUB)
-        self.assertIn("create or update neither publication", PUB)
-
-    def test_review_admission_is_host_global_deterministic_and_context_idle(self):
-        for phrase in (
-            "Acquire host-global review admission",
-            "strict host-wide FIFO",
-            "Do not create a reviewer Task",
-            "Queued state is inert deterministic machine state",
-            "REVIEW_SLOT_GRANTED",
-            "There is no lease TTL",
-        ):
+    def test_persistent_chat_native_review_is_the_only_backbone(self):
+        for phrase in ('Chat/ACP mode', '/review <canonical-PR-URL> --effort high', 'same idle reviewer'):
             self.assertIn(phrase, ORCH)
+        for forbidden in ('run_explicit_review.py --monitor-envelope', 'resultJson', 'Qwen Monitor while the review runs'):
+            self.assertNotIn(forbidden, ORCH)
 
-    def test_timeout_review_resume_is_bounded_and_same_reviewer(self):
-        for phrase in (
-            "`timedOut: true` is the sole automatic-resume case",
-            "same reviewer Task",
-            "Never spawn a replacement reviewer",
-            "at most one automatic resume",
-            "stop for human attention",
-        ):
+    def test_generic_worker_completion_contract_is_preserved(self):
+        for phrase in ('TASK_COMPLETE', 'REVIEW_HANDOFF_BLOCKED', 'freeform, host-level, read-only, no-change'):
+            self.assertIn(phrase, AGENT)
+        self.assertIn('READY_FOR_REVIEW', AGENT)
+        self.assertIn('READY_FOR_REREVIEW', AGENT)
+
+    def test_ao_review_effort_is_fixed_high(self):
+        self.assertIn('MUST run at native `high` effort', ORCH)
+        self.assertIn('/review <ASSIGNED_CANONICAL_URL> --effort high', AGENT)
+        self.assertIn('selected effort MUST be `high`', AGENT)
+
+    def test_verdict_phase_preflights_native_posting_authorization(self):
+        self.assertIn('qwen review parse-args --stdin', ORCH)
+        self.assertIn('comment.effective == false', ORCH)
+        self.assertIn('review.comment: true', ORCH)
+        self.assertIn('comment.effective == false', AGENT)
+        self.assertIn('comment.effective == false', PUB)
+        self.assertIn('comment.effective == false', CONTRACT)
+
+    def test_nonposting_preflight_precedes_reviewer_creation_everywhere(self):
+        self.assertLess(ORCH.index('## Non-posting verdict preflight'), ORCH.index('## Dispatch the persistent reviewer'))
+        self.assertLess(SKILL.index('AO preflights the exact review arguments'), SKILL.index('AO creates exactly one persistent Qwen Chat/ACP reviewer'))
+        self.assertLess(PUB.index('run the deterministic non-posting argument preflight'), PUB.index('Create one persistent Chat/ACP reviewer'))
+
+    def test_setup_protocol_text_is_not_publication_authorization(self):
+        self.assertIn('setup assignment is descriptive protocol context only', ORCH)
+        self.assertIn('MUST NOT be interpreted as a request to publish', ORCH)
+        self.assertIn('Treat the setup assignment as protocol description only, not publication authorization', AGENT)
+        self.assertIn('Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH`', AGENT)
+
+    def test_two_phase_authorization_is_explicit_without_freezing_native_cleanup(self):
+        for phrase in ('AO_SEMANTIC_REVIEW_PUBLISH', 'AO_SEMANTIC_REVIEW_DISCARD'):
             self.assertIn(phrase, ORCH)
+            self.assertIn(phrase, AGENT)
+        self.assertIn('publication decision is intentionally unresolved', AGENT)
+        self.assertIn('allowed to complete its normal lifecycle, including cleanup', ORCH)
+        self.assertIn('same reviewer session is still reserved for the publication decision', ORCH)
 
-    def test_semantic_summary_findings_are_actionable_not_index_only(self):
-        for phrase in (
-            "trusted `summary` field (not `shortSummary`)",
-            "independently understandable and actionable",
-            "`failureScenario`",
-            "`witness`/evidence description",
-            "`suggestedFix`",
-            "Never omit a finding",
-            "`PUBLICATION_ERROR`",
-        ):
+    def test_native_qwen_owns_publication_projection(self):
+        for phrase in ('native GitHub review publication', 'event, body, inline comments', 'AO MUST NOT create a second findings summary'):
             self.assertIn(phrase, PUB)
+        self.assertIn('ao-semantic-review-summary:v1', PUB)
+        self.assertIn('retired', PUB)
 
-    def test_worker_completion_handoff_is_explicit_and_regression_protected(self):
+    def test_no_automatic_resume_or_replacement_reviewer(self):
+        self.assertIn('There is no automatic timeout/resume path', ORCH)
+        self.assertIn('Never spawn a replacement reviewer', ORCH)
+        self.assertIn('No automatic resume is defined', CONTRACT)
+
+    def test_chat_control_delivery_is_idempotent(self):
+        for phrase in ('--client-message-id', '--recover-only', 'must never become a second `post comments` turn'):
+            self.assertIn(phrase, ORCH)
+
+    def test_next_phase_starts_only_from_idle_chat(self):
+        self.assertIn('reviewer Chat session **idle**', ORCH)
+        self.assertIn('`--steer` against a working Chat turn', ORCH)
+        self.assertIn('end the Chat turn immediately', AGENT)
+
+    def test_publish_time_head_drift_aborts_without_restart(self):
+        self.assertIn('reasonCode=head_moved', ORCH)
+        self.assertIn('do not publish the old verdict', AGENT)
+        self.assertIn('do not convert this authorization into a review of the new SHA', AGENT)
+        self.assertIn('reasonCode=head_moved', CONTRACT)
+
+    def test_reviewer_messages_are_explicit(self):
         for phrase in (
-            "ao send --session <ACTIVE_ORCHESTRATOR_ID>",
-            "TASK_COMPLETE",
-            "READY_FOR_REVIEW",
-            "READY_FOR_REREVIEW",
-            "SEMANTIC_REVIEW_RESULT",
-            "SEMANTIC_REVIEW_FAILURE",
-            "mandatory task-lifecycle event",
-            "sole fallback exception",
-            "pane text and final assistant prose are not lifecycle handoffs",
+            'SEMANTIC_REVIEW_READY', 'SEMANTIC_REVIEW_RESULT',
+            'SEMANTIC_REVIEW_PUBLISHED', 'SEMANTIC_REVIEW_DISCARDED',
+            'SEMANTIC_REVIEW_PUBLICATION_FAILURE',
         ):
             self.assertIn(phrase, AGENT)
-        for forbidden in (
-            "ao report --done",
-            "ao report --checkpoint",
-            "ao report --needs-input",
-            "ao report --stuck",
-        ):
-            self.assertNotIn(forbidden, AGENT)
 
-    def test_orchestrator_requires_directed_ao_send_replies(self):
-        self.assertIn("Worker/reviewer replies use the `ao send` transport", ORCH)
-        self.assertIn("explicitly require the worker/reviewer to reply with `ao send`", ORCH)
-        self.assertIn("send the complete assignment with `ao send`", ORCH)
-        self.assertNotIn("durable report channel", ORCH)
+    def test_worker_repairs_from_native_review_not_ao_projection(self):
+        self.assertIn('native Qwen GitHub review', AGENT)
+        self.assertIn('AO does not copy/rewrite the findings', ORCH)
+        self.assertNotIn('addressedFindingIds', AGENT)
+
+    def test_ao_owns_status_not_summary_comment(self):
+        self.assertIn('`ao/semantic-review` commit status', ORCH)
+        self.assertIn('no longer creates or updates an AO semantic-review summary comment', ORCH)
+        self.assertIn('normal lifecycle creates or updates none', PUB)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

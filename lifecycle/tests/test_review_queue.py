@@ -25,7 +25,7 @@ class ReviewQueueTests(unittest.TestCase):
         env = {**os.environ, "AO_REVIEW_QUEUE_STATE_DIR": str(self.state)}
         return subprocess.run([str(HELPER), *map(str, args)], text=True, capture_output=True, env=env)
 
-    def request(self, n, sha, orch=None, resume=False):
+    def request(self, n, sha, orch=None):
         args = [
             "request", "--review-key", f"owner/repo#{n}@{sha}",
             "--repository", "owner/repo", "--pr-number", str(n),
@@ -33,8 +33,6 @@ class ReviewQueueTests(unittest.TestCase):
             "--expected-head", sha, "--orchestrator-session-id", orch or f"orch-{n}",
             "--worker-session-id", f"worker-{n}", "--repair-cycle", "0",
         ]
-        if resume:
-            args.append("--resume-attempt")
         result = self.runq(*args)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
@@ -81,14 +79,13 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertTrue(cancelled["wasActive"])
         self.assertEqual(cancelled["next"]["ticketId"], 2)
 
-    def test_resume_reenters_at_back_after_release(self):
-        self.request(1, SHA1, orch="orch-a"); self.request(2, SHA2, orch="orch-b")
-        released = json.loads(self.runq("release", 1).stdout)
-        self.assertEqual(released["next"]["ticketId"], 2)
-        resumed = self.request(1, SHA1, orch="orch-a", resume=True)
-        self.assertEqual((resumed["status"], resumed["position"]), ("queued", 1))
+    def test_new_tickets_always_disable_legacy_resume_field(self):
+        self.request(1, SHA1)
         status = json.loads(self.runq("status").stdout)
-        self.assertTrue(status["pending"][0]["resumeAttempt"])
+        self.assertFalse(status["active"]["resumeAttempt"])
+        help_text = self.runq("request", "--help")
+        self.assertEqual(help_text.returncode, 0)
+        self.assertNotIn("--resume-attempt", help_text.stdout)
 
     def test_concurrent_requests_have_exactly_one_grant(self):
         requests = [(1, SHA1), (2, SHA2), (3, SHA3)]

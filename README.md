@@ -26,149 +26,108 @@ This harness gives those responsibilities one authoritative home instead of spre
 ```mermaid
 flowchart TB
     H[Human operator]
-
     subgraph AO[AO control plane]
         O[Qwen orchestrator session]
-        W[Implementation worker task]
-        Q[Host-global review admission queue]
-        R[Dedicated reviewer task]
+        W[Implementation worker]
+        Q[Host-global review FIFO]
+        R[Persistent Qwen Chat reviewer]
     end
-
-    subgraph EXEC[Execution and evidence]
-        WT[Isolated AO worktree]
-        V[Local scripts/verify]
-        M[Qwen Monitor]
-        S[ao-pr-review]
-        J[Validated result.json]
-    end
-
     subgraph GH[GitHub]
         PR[Pull request at exact SHA]
         CI[Required deterministic CI]
-        P[ao/semantic-review status and summary]
+        NR[Native Qwen review + inline threads]
+        ST[ao/semantic-review status]
     end
-
-    H --> O
-    O --> W
-    W --> WT --> V --> PR --> CI
-    CI --> O
-    O --> Q --> R --> M --> S --> J --> O
-    O --> P --> H
+    W --> PR --> CI --> O
+    O --> Q --> R
+    O -->|native /review turn| R
+    R -->|semantic result; session retained| O
+    O -->|publish or discard| R
+    R -->|native post comments| NR
+    O --> ST
     O -. one repair request at most .-> W
+    H --> O
 ```
 
-The orchestrator itself is a Qwen Code session, but **Qwen is not the lifecycle authority**. AO owns the session, task lineage, worktree assignment, readiness checks, routing, and terminal handoff. Qwen supplies the reasoning inside the constrained orchestrator, implementation, and reviewer roles.
+AO remains the workflow authority. Qwen's native `/review` is the semantic authority and, after AO authorization, the publication authority for the GitHub review itself.
 
 ### Who owns what?
 
-| Concern | Authority | Why |
-|---|---|---|
-| Tasks, sessions, worktrees, dispatch, and routing | AO | Workflow state must remain durable and singular. |
-| Coordination reasoning | Qwen orchestrator session under AO rules | The model plans and interprets evidence without becoming a second controller. |
-| Scoped implementation | Qwen implementation worker | Coding happens in an isolated AO worktree and ends in an exact-SHA handoff. |
-| Mechanical correctness | `scripts/verify` locally and in CI | Commands and exit codes are reproducible; prose is not. |
-| Semantic review execution | `ao-pr-review` wrapping native `qwen review run` | The wrapper binds review to one PR head, validates artifacts, and fails closed. |
-| Review admission, lifecycle, and GitHub publication | AO orchestrator + deterministic host-global queue | Orchestrators own lifecycle; the queue only serializes the scarce review resource; review execution stays non-posting. |
-| Product scope and architecture | The managed project | Repository truth must travel with the repository. |
-| Merge | Human | Passing automation is evidence, not authorization to integrate. |
+| Concern | Authority |
+|---|---|
+| Tasks, sessions, exact-SHA readiness, admission, routing | AO |
+| Scoped implementation | Qwen implementation worker |
+| Mechanical correctness | `scripts/verify` locally and in CI |
+| Review effort | fixed native `high` for AO-managed publish-capable reviews |
+| Semantic reasoning/findings/convergence | native Qwen `/review` |
+| GitHub review body/event/inlines | same native Qwen reviewer after AO authorization |
+| `ao/semantic-review` status | AO |
+| Merge | Human |
 
-The complete normative ownership matrix lives in [Harness Architecture and Policy Ownership](docs/architecture-and-policy-ownership.md).
+## Pull-request lifecycle
 
-## The pull-request lifecycle
+1. Implementation worker verifies, pushes and hands off the canonical PR plus exact head SHA.
+2. AO independently checks open/non-draft state and required deterministic CI for that SHA.
+3. AO obtains the host-global FIFO slot. AO-managed review effort is fixed to native `high` because native PR publication is high-only. Before creating a reviewer, native argument parsing must prove the verdict turn is non-posting (`comment.effective == false`) for the exact PR command.
+4. AO creates one dedicated **Chat/ACP** Qwen reviewer and establishes `reviewKey = owner/repo#PR@SHA`.
+5. AO sends one native `/review <PR-URL> --effort high` turn to that same session.
+6. Qwen completes the verdict-only native review normally and reports semantic event metadata to AO; the same reviewer conversation remains available.
+7. AO revalidates the live head. If unchanged it sends one publish authorization; if moved/cancelled it sends discard.
+8. The same Qwen session either follows native `post comments` or posts nothing. Qwen owns the internal state/persistence mechanics of that follow-up.
+9. AO publishes the terminal `ao/semantic-review` status, releases the FIFO slot and may route one repair cycle.
+10. A human decides whether to merge.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Implementation
-    Implementation --> CIQualification: READY_FOR_REVIEW with exact SHA
-    CIQualification --> Implementation: PR-caused CI failure
-    CIQualification --> SemanticReview: required checks pass
-    SemanticReview --> ReadyForHuman: PASS
-    SemanticReview --> Repair: one eligible BLOCKED result
-    SemanticReview --> HumanAttention: stale, error, uncertainty, or HITL boundary
-    Repair --> Rereview: new SHA and verification pass
-    Rereview --> ReadyForHuman: PASS
-    Rereview --> HumanAttention: any other result
-    ReadyForHuman --> HumanMerge
-    HumanAttention --> [*]
-    HumanMerge --> [*]
-```
-
-1. An implementation worker changes only its assigned scope in an AO-managed worktree.
-2. It must pass `bash scripts/verify`, commit, push, and open or update a pull request.
-3. It hands the orchestrator the canonical PR URL and exact 40-character head SHA.
-4. The orchestrator independently requires an open, non-draft PR and passing required CI for that same SHA.
-5. A fresh dedicated reviewer task executes the installed `ao-pr-review` Skill's AO reviewer Task entry point for the assigned PR, exact SHA, and `auto` effort request.
-6. The Skill runs one non-posting native Qwen review, validates its artifacts, and persists a typed result.
-7. The orchestrator revalidates the result and live PR head before publishing `ao/semantic-review` and one AO-owned summary comment whose findings remain actionable without access to local review artifacts.
-8. A clearly actionable, in-scope failure may be routed back once. The new head must pass the entire gate again.
-9. A human decides whether to merge.
-
-Semantic review is enabled by default. A project may explicitly disable it in `.agent-harness.json`; exact-SHA handoff and deterministic CI qualification still remain mandatory.
+Semantic review is enabled by default and may be explicitly disabled by project lifecycle configuration.
 
 ## Why these design decisions?
 
-### One controller, multiple reasoning roles
+### One controller, one semantic reviewer conversation
 
-AO is the only workflow controller. Enabling another issue poller, review controller, or autonomous GitHub agent would create competing state machines and ambiguous ownership. Qwen workers therefore do not spawn other AO tasks, route findings, publish review outcomes, or merge.
+AO owns lifecycle state. Review reasoning is not delegated to a nested subprocess/session: the dedicated reviewer conversation itself executes native `/review` and remains alive through the later publication decision. This removes the prior AO Task -> Monitor -> Python runner -> second Qwen session stack.
 
 ### Exact commit identity everywhere
 
-The review identity is repository + PR number + expected head SHA. The PR head is checked before dispatch, immediately before native review, after review, and again before publication. A moved head makes the old result stale; a verdict is never transferred to a newer commit.
+The orchestrator checks the PR head before dispatch, immediately before native review, after the semantic result, and immediately before publication authorization. A moved head invalidates publication of the old result.
 
 ### Two independent gates
 
-`scripts/verify` and required CI answer mechanical questions. Native Qwen review answers semantic questions such as incorrect behavior, security risk, and missing edge cases. Neither can substitute for the other, and either can stop the lifecycle.
+Deterministic verification/CI and semantic review answer different questions. Both must pass for the exact head.
 
 ### No self-review
 
-The implementation worker never reviews its own change. A dedicated reviewer gets a narrow assignment, cannot repair findings, and returns a structured result to the orchestrator. This reduces role confusion and keeps implementation context from becoming review authority.
+Implementation and review remain different AO sessions. The reviewer never repairs code; the implementation worker receives at most one repair request and reads the published native Qwen review directly.
 
-### Review admission is deterministic and context-idle
+### Review admission remains context-idle
 
-Before reviewer creation, the orchestrator requests one host-global FIFO review slot. A queued initial review is only durable machine identity: no reviewer Task, Monitor, semantic process, polling loop, or recurring model context is consumed. On promotion the owning orchestrator revalidates the exact SHA and deterministic CI before spawning the reviewer. Timeout resumes release their slot and re-enter at the back of the FIFO.
+Queued reviews create no reviewer or model activity. The FIFO ticket remains held until the active reviewer has completed the AO publish/discard phase and terminal acknowledgement, because that reviewer session remains reserved for the decision.
 
-When introducing the queue to a pre-queue host, the installer refuses only while an existing semantic-review lock is held. Other AO sessions may remain running; after installation, orchestrators re-read the host-global rules before coordination actions.
+### Two-phase publication is an AO authorization boundary
 
-### Long reviews do not block the orchestrator
+The verdict phase is non-posting. Native `/review` may complete its normal cleanup. AO then checks the exact head and decides publish/discard; if publication is authorized, the same reviewer conversation follows Qwen's normal `post comments` path. AO leaves Qwen's internal follow-up mechanics entirely to native review behavior.
 
-`ao-pr-review` launches the headless native review through Qwen Monitor. The reviewer yields while the monitored process runs; bounded heartbeats provide liveness and the terminal event resumes result handling. The orchestrator remains available, and neither it nor the reviewer busy-polls the review.
+Before creating the reviewer, AO uses Qwen's native argument parser to prove that the exact verdict-phase command has `comment.effective == false`. A standing operator `review.comment: true` is incompatible with this harness lifecycle because Qwen would otherwise treat the initial review as already authorized to publish.
 
-### Review and publication are separate capabilities
+### Qwen owns review projection; AO owns permission
 
-`ao-pr-review` is intentionally non-posting. It produces local, validated evidence. Only the AO orchestrator may publish the exact `ao/semantic-review` commit status and the single marked PR summary. Review correctness therefore does not depend on permission to mutate GitHub.
+AO no longer projects findings into a separate summary comment and never creates native submit payloads. Qwen owns event/body/inline selection and thread behavior. AO only decides whether the already-completed review may be published and owns the independent `ao/semantic-review` status.
 
-### One automatic repair cycle
+Historical AO summary comments are retained as history but are no longer created or updated.
 
-The orchestrator may route one narrowly actionable repair request back to the original worker. A second failure, uncertain premise, scope expansion, or project-defined human-in-the-loop boundary stops automation instead of creating an endless agent loop.
+### Fail closed on session loss
 
-### Human merge authority
+There is no automatic timeout/resume in the persistent-review architecture. If the reviewer conversation is lost or the native review is interrupted, AO does not spawn a replacement reviewer to publish the prior result.
 
-The harness does not auto-merge. Even a clean deterministic gate and semantic PASS only mean that the exact reviewed head is ready for a human-controlled integration decision.
+### One automatic repair cycle; human merge
 
-## Why not use Qwen's GitHub Channel or GitHub Action as the controller?
+A first blocking native review may be routed once to the original worker when it is in scope and outside HITL boundaries. Any non-pass rereview stops for human attention. Merge is always human-controlled.
 
-They are useful integrations, but they solve a different problem. In this harness they would introduce another intake and response loop beside AO, with separate session identity, retry behavior, and publication semantics. That would weaken the single-controller invariant and bypass the AO handoff → exact-SHA CI qualification → dedicated review → bounded repair lifecycle.
+## Review support package
 
-The harness does use Qwen's native review engine—through `qwen review run` inside `ao-pr-review`. It deliberately does not delegate workflow ownership to Qwen's GitHub-facing integrations.
+`global/qwen/skills/ao-pr-review/` now contains only protocol/policy documentation. The production review path has no semantic runner, effort selector, `qwen review run`, Qwen Monitor envelope, semantic artifact validator, AO findings compositor, or AO-owned semantic-review summary comment.
 
-## Review gate and evidence
+AO-managed reviews always use native `high` effort because Qwen's supported publication path is high-only. The previous `.qwen/review-config.json` risk/effort configuration is retired; existing repository copies are left untouched but new templates no longer create or consume it.
 
-For one qualified PR head, `ao-pr-review`:
-
-- requires an open, non-draft PR at the supplied SHA;
-- requires at least one passing deterministic required check;
-- selects effort deterministically from validated risk metadata; auto uses only medium/high and explicit low is supported;
-- locks concurrent review attempts for the same PR;
-- records local repository identity before and after review;
-- runs exactly one native, non-posting Qwen review;
-- rejects malformed or incompatible review artifacts;
-- distinguishes `pass`, `blocked`, `needs_human`, `stale`, and `review_error`;
-- preserves hashes and evidence in a unique run directory;
-- never repairs code, retries itself, posts to GitHub, or merges.
-
-A Monitor completion only means that a trustworthy result was persisted. It does **not** mean PASS; the validated disposition inside `result.json` is authoritative. See the [ao-pr-review contract](global/qwen/skills/ao-pr-review/README.md).
-
-An explicit, model-hidden [`ao-semantic-review-override`](global/qwen/skills/ao-semantic-review-override/README.md) exists only as a human-operated administrative escape hatch. It cannot be invoked autonomously and does not rewrite semantic evidence.
+The model-hidden [`ao-semantic-review-override`](global/qwen/skills/ao-semantic-review-override/README.md) remains a human-only administrative escape hatch for the `ao/semantic-review` status. It does not create or alter a native Qwen review.
 
 ## Policy layout
 
@@ -185,7 +144,7 @@ flowchart LR
     subgraph PROJECT[Managed project]
         P[PROJECT.md]
         D[ARCHITECTURE.md]
-        C[Review risk and lifecycle config]
+        C[Lifecycle config]
         V[scripts/verify]
     end
 
@@ -207,8 +166,8 @@ The intended defense in depth is:
 - isolated AO worktrees and protected default branches;
 - project-defined human-in-the-loop boundaries;
 - local and CI verification using the same entry point;
-- exact-SHA semantic review with before/after identity checks;
-- non-posting reviewers and narrow orchestrator publication authority;
+- exact-SHA semantic review with publication-time head revalidation;
+- persistent native Qwen review publication gated by explicit AO authorization;
 - no automatic merge;
 - retained evidence for audit and diagnosis.
 
@@ -272,9 +231,9 @@ This is the same fail-fast, non-repairing gate invoked by GitHub Actions.
 
 ## Current status
 
-The reusable policy layers, project templates, verification profiles, installation and migration tooling, semantic-review pipeline, host-global deterministic review admission, manual override, and production-project smoke qualification are complete. The accepted qualification covered issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge.
+The reusable policy layers, project templates, verification profiles, installation/migration tooling, host-global deterministic review admission, and manual override are implemented. The prior review architecture had an accepted production-project smoke qualification covering issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge. The new v0.4 persistent native-review backbone is implemented but still requires one clean end-to-end release-qualification run that produces exactly one native GitHub review.
 
-Fresh-host/fresh-project end-to-end qualification remains deliberately deferred. See [Current Harness Implementation Status](docs/status/current.md) for the authoritative progress record.
+Fresh-host/fresh-project end-to-end qualification also remains deliberately deferred. See [Current Harness Implementation Status](docs/status/current.md) for the authoritative progress record.
 
 ## Guiding invariant
 

@@ -1,126 +1,83 @@
 # AO Semantic-Review Publication Policy
 
-<!-- BEGIN AO_SEMANTIC_REVIEW_PUBLICATION_V1 -->
+<!-- BEGIN AO_SEMANTIC_REVIEW_PUBLICATION_V2 -->
 
-This policy governs only publication of the harness semantic-review lifecycle to GitHub. It applies when semantic review is enabled for the project.
+This policy governs publication of the harness semantic-review lifecycle when semantic review is enabled.
 
-## Ownership and authorization
+## Ownership
 
-- `ao-pr-review` is strictly non-posting and must not mutate GitHub.
-- The AO orchestrator alone owns the normal automated publications authorized by this policy.
-- The sole harness-owned exception is an explicit human invocation of the model-hidden `ao-semantic-review-override` Skill. That administrative override may set only `ao/semantic-review=success` on the exact current PR head after its independent fail-closed preconditions pass. It does not represent or modify a semantic disposition, does not update the AO summary comment, and is never an orchestrator/model fallback path.
-- The normal lifecycle mutations authorized by this policy are:
-  1. commit status context `ao/semantic-review`; and
-  2. one AO-owned pull-request summary comment.
-- This policy does not authorize code changes, commits, branches, pull-request reviews or approvals, change requests, inline comments, labels, issue changes, or merges.
-- If semantic review is disabled, create or update neither publication.
-- GitHub publication never changes the semantic disposition produced by `ao-pr-review`.
+- AO owns authorization and the exact commit-status context `ao/semantic-review`.
+- The dedicated persistent Qwen reviewer owns native GitHub review publication after explicit AO authorization: event, body, inline comments, thread/convergence behavior, native submit and cleanup.
+- AO MUST NOT create a second findings summary, inline-comment projection or submit payload.
+- The old AO-owned `<!-- ao-semantic-review-summary:v1 -->` PR comment is retired. Existing historical comments are left untouched; the normal lifecycle creates or updates none.
+- The human-only `ao-semantic-review-override` remains limited to setting `ao/semantic-review=success` after its independent preconditions. It does not create or alter a native Qwen review.
+- Neither AO nor Qwen may auto-merge.
 
-## Trust boundary
+## Exact-head authorization boundary
 
-A terminal semantic verdict may be published only from a persisted result that the orchestrator has validated against the installed `ao-pr-review` contract and the exact dispatched repository, pull request, and expected head SHA.
+Native publication is authorized only after:
 
-Immediately before terminal publication, re-read the live pull-request head. Never infer a verdict from Task state, prose, stdout, heartbeats, monitor completion, or process exit alone.
+1. qualified deterministic CI for the assigned expected SHA;
+2. a deterministic `qwen review parse-args --stdin` preflight for `<canonical-PR-URL> --effort high` proves the same PR target, `effort == high`, `comment.requested == false`, `comment.effective == false`, and no unknown/extra tokens; operator-scope `review.comment: true` is incompatible because it would authorize publication during the verdict phase;
+3. one completed native `/review` in the assigned persistent reviewer session;
+4. a lifecycle result whose reviewer/session/reviewKey/PR/head/effort identity matches the dispatch; and
+5. an immediate live PR-head re-read equal to the reviewed expected SHA.
 
-If result validation fails, do not publish a semantic verdict. Follow Failure handling.
+AO then sends `AO_SEMANTIC_REVIEW_PUBLISH` to that same reviewer session. A grant/admission ticket, reviewer assignment, `/review` execution, semantic verdict, or GitHub credential alone is not publication authorization.
+
+The semantic lifecycle result remains the pre-publication Qwen verdict. Provider-side/native submission may neutralize the GitHub review event (for example, GitHub self-authored PRs cannot accept APPROVE/REQUEST_CHANGES and Qwen posts COMMENT instead). That API event change does not rewrite AO's semantic disposition or `ao/semantic-review` status.
+
+If the live head moved, AO sends `AO_SEMANTIC_REVIEW_DISCARD`; the old semantic result is stale and MUST NOT be posted natively.
+The same exact-head boundary remains in force inside native publication. If Qwen presubmit detects head drift after AO authorization, the reviewer must abort before submit, must not use Qwen's normal drift-restart behavior to review the new SHA under the old authorization, and report `reasonCode=head_moved`. AO treats that as stale. Qwen owns any internal state handling.
 
 ## Commit status
 
-Use the exact commit-status context:
+Use exact context `ao/semantic-review` and canonical PR URL as target URL. Read current context first and avoid an identical rewrite.
 
-`ao/semantic-review`
+After reviewer setup and native `/review` dispatch succeed:
 
-Use the canonical pull-request URL as the target URL. Before writing a status, read the current status for this context; if state, description, and target URL already match the desired publication, do nothing.
+- `pending`: `AO semantic review running for <SHORT_SHA>`
 
-After readiness, exact-head validation, and all required deterministic checks have passed, and after the dedicated reviewer Task has been created and the exact review assignment/command has been delivered successfully, publish on the exact expected head:
+After terminal native publication/discard/failure:
 
-- state: `pending`
-- description: `AO semantic review running for <SHORT_SHA>`
-
-Do not publish `pending` before reviewer-Task creation and assignment delivery succeed. If either step fails, follow failure handling instead of publishing a running state.
-
-For a trustworthy terminal result, publish on the reviewed SHA only:
-
-| Semantic disposition | GitHub state | Description |
+| Lifecycle result | status | description |
 |---|---|---|
-| `pass` | `success` | `AO semantic review passed for <SHORT_SHA>` |
-| `blocked` | `failure` | `AO semantic review found blocking issues for <SHORT_SHA>` |
-| `needs_human` | `error` | `AO semantic review needs attention for <SHORT_SHA>` |
-| `review_error` | `error` | `AO semantic review failed for <SHORT_SHA>` |
-| `stale` | `error` | `AO semantic review stale for <SHORT_SHA>` |
+| pass | success | `AO semantic review passed for <SHORT_SHA>` |
+| blocked | failure | `AO semantic review found blocking issues for <SHORT_SHA>` |
+| needs_human | error | `AO semantic review needs attention for <SHORT_SHA>` |
+| stale | error | `AO semantic review stale for <SHORT_SHA>` |
+| review_error / publication failure other than head drift | error | `AO semantic review failed for <SHORT_SHA>` |
 
-Never transfer a status verdict to a different SHA. If the live PR head moved, only the reviewed SHA may receive the stale terminal state; the new head requires a fresh qualified review.
+Never transfer status to another SHA. A new PR head requires a fresh qualified lifecycle.
 
-## Pull-request summary
+## Two-phase native publication
 
-Maintain exactly one AO-owned PR comment containing this marker:
+The verdict and publication decision are separate AO phases, but Qwen owns the internal lifecycle of each native review turn. The initial `/review` may complete its normal persistence and cleanup behavior. After AO revalidates identity/head, the same reviewer session either:
 
-`<!-- ao-semantic-review-summary:v1 -->`
+- receives publish authorization and follows Qwen's normal native `post comments` continuation; or
+- receives discard and performs no GitHub review mutation.
 
-Resolve an existing marked comment only when it was authored by the currently authenticated AO GitHub identity.
-
-- Exactly one matching AO-authored comment: update it.
-- No matching AO-authored comment: create it.
-- More than one matching AO-authored comment: make no comment mutation and report `PUBLICATION_ERROR`.
-- Never modify another author's comment.
-- Never create a replacement merely because the existing marked comment is outdated.
-
-The visible comment must begin with `## AO Semantic Review` and concisely include:
-
-- publication state: `RUNNING`, `PASS`, `BLOCKED`, `NEEDS HUMAN`, `REVIEW ERROR`, or `STALE`;
-- PR number and canonical URL;
-- reviewed full head SHA and current live head SHA;
-- requested and selected effort, with selection reasons when available;
-- native and base review events;
-- required deterministic CI result, excluding only the exact `ao/semantic-review` context;
-- semantic disposition;
-- every finding, including informational findings, with stable ID, severity, confidence, the trusted `summary` field (not `shortSummary`), and every source location;
-- `reviewKey` and `attemptId`;
-- recommended next action.
-
-A terminal summary is an actionable review record, not merely an index into local evidence:
-
-- Publish each finding's trusted `summary` verbatim in meaning and detail. Never substitute `shortSummary`, a publisher-authored one-line paraphrase, or "details retained locally" for the required summary.
-- Every unresolved `Critical` finding must be independently understandable and actionable from the GitHub summary without access to local artifacts. In addition to the required fields above, include its `failureScenario`; include the trusted `witness`/evidence description and `suggestedFix` when present. If a suggested fix is absent, do not invent one.
-- For `Suggestion` and `Nice to have` findings, retain the full trusted summary and locations and include `suggestedFix` when present. Additional witness/failure-scenario detail may be condensed before required finding content if the GitHub body-size limit is approached.
-- Size pressure must first remove generic lifecycle boilerplate and optional repeated evidence. Never omit a finding, drop its required fields, or replace its full summary with `shortSummary` merely to fit the comment.
-- If the required terminal content still cannot fit within GitHub's body-size limit, do not publish a misleading partial terminal summary. Report `PUBLICATION_ERROR` and the independently trustworthy semantic result separately under Failure handling; retained local evidence is not a substitute for required published finding detail.
-
-A `PASS` summary must preserve non-blocking findings. Pass means no finding blocks the reviewed head; it does not mean that no findings exist.
-
-For `RUNNING` or `REVIEW ERROR` states that occur before a trustworthy terminal result provides all terminal fields, publish only values that are independently known and explicitly mark unavailable terminal values as `not available`. Never infer effort, events, findings, `reviewKey`, or `attemptId`.
-
-## Sensitive information
-
-Never publish raw logs, credentials, tokens, environment variables, absolute local filesystem paths, or internal transport diagnostics. It is sufficient to state that local evidence was retained.
+The host-global review-admission ticket remains active through this entire AO lifecycle and is released only after publication/discard/failure reaches a terminal acknowledgement.
 
 ## Failure handling
 
-If review transport fails, the Task is cancelled, no trustworthy result exists, or result identity/contract validation fails:
-
-- never publish `success` or `failure` as a semantic verdict;
-- if repository, PR, and expected SHA remain independently trustworthy, publish `error` on that expected SHA and update the AO summary to `REVIEW ERROR`;
-- if publication identity itself is uncertain, perform no GitHub mutation;
-- report semantic-review failure and publication failure separately;
-- never fabricate findings or reconstruct a verdict from prose;
-- do not retry publication indefinitely.
-
-A publication failure does not invalidate an independently trustworthy local semantic result.
+- Missing/mismatched reviewer identity, interrupted native review, lost reviewer session, publish failure or uncertain control state never becomes PASS.
+- Do not spawn a replacement reviewer merely to publish a prior review and do not construct Qwen's submit payload in AO.
+- If the reviewer is lost after verdict but before the AO publication decision completes, publication is forbidden; do not silently recover it with a new semantic run.
+- Do not retry native publication indefinitely. One control decision is sent for one review lifecycle.
+- When exact repository/PR/SHA identity remains trustworthy, publish `ao/semantic-review=error`; if publication identity itself is uncertain, perform no GitHub mutation.
 
 ## Lifecycle
 
-For each qualified exact-SHA semantic review:
+1. Qualify exact SHA and deterministic CI.
+2. Acquire host-global FIFO admission.
+3. Fix review effort to native `high` and run the deterministic non-posting argument preflight; fail closed before reviewer creation if `comment.effective != false` or the parsed target/input differs.
+4. Create one persistent Chat/ACP reviewer and establish exact lifecycle identity.
+5. Dispatch one native `/review` turn and publish pending status.
+6. Reviewer returns semantic event metadata and remains available in the same conversation.
+7. AO revalidates lifecycle identity and live head.
+8. AO sends exactly one publish or discard control turn to the same reviewer.
+9. Reviewer performs native publication follow-up or discard handling and acknowledges terminal state.
+10. AO publishes terminal `ao/semantic-review`, routes at most one repair, releases the queue ticket, and leaves merge to a human.
 
-1. Qualify readiness and deterministic CI under the global orchestrator rules.
-2. Obtain host-global review admission under the orchestrator rules; queued state creates no GitHub publication.
-3. After admission is granted and requalified, dispatch exactly one semantic review for the expected SHA.
-4. After reviewer-Task creation and assignment delivery succeed, publish or retain the idempotent pending status and `RUNNING` summary.
-5. Receive the terminal reviewer result or failure without busy-polling.
-6. Validate any persisted result against the installed `ao-pr-review` contract and dispatch identity.
-7. Re-read the live PR head.
-8. Publish the exact-SHA terminal status and update the single AO summary.
-9. Route subsequent repair or human action under the global orchestrator rules.
-
-Never merge automatically. Merge remains a human decision.
-
-<!-- END AO_SEMANTIC_REVIEW_PUBLICATION_V1 -->
+<!-- END AO_SEMANTIC_REVIEW_PUBLICATION_V2 -->
