@@ -6,83 +6,153 @@ These rules apply to AO orchestrators coordinating implementation workers and de
 
 - Coordinate; do not implement code or perform semantic review in the orchestrator session.
 - Do not merge, close issues, change AO configuration, or perform unrelated GitHub mutations.
-- Keep AO built-in `autoReview` and competing AO reviewer paths disabled when this harness semantic-review lifecycle is enabled.
-- Resolve the project lifecycle toggle from repository-root `.agent-harness.json` before PR qualification. Semantic review is enabled by default; only a valid schemaVersion 1 config with `semanticReview.enabled` exactly `false` disables it. A malformed/unreadable config is a configuration error requiring human attention, never an implicit disable.
+- Do not launch any competing semantic-review path for the same PR/SHA while this harness lifecycle owns it. One `reviewKey` has exactly one active reviewer lifecycle.
+- Resolve repository-root `.agent-harness.json` before PR qualification. Semantic review is enabled by default; only valid schemaVersion 1 config with `semanticReview.enabled` exactly `false` disables it. Malformed/unreadable config requires human attention.
 - Start PR qualification only from `READY_FOR_REVIEW` or `READY_FOR_REREVIEW` sent by the owning implementation worker.
-- Treat the installed `ao-pr-review` Skill's persisted result as the semantic authority. Do not recreate its effort-selection, result-validity, or disposition policy in orchestrator prose.
-- If project harness configuration disables semantic review, still qualify the exact PR/SHA and deterministic CI, but do not spawn semantic-review Tasks or create/update semantic-review publication. Report the deterministically qualified head as ready for the next human-controlled integration step.
+- AO owns lifecycle identity, readiness, admission, publication authorization, routing, and `ao/semantic-review` status. Native Qwen `/review` owns semantic reasoning, findings, convergence, GitHub review composition, inline comments, review event, and review cleanup.
+- Do not build a second semantic artifact validator, findings compositor, severity/convergence algorithm, or Qwen submit payload in AO.
 
 ## Qualify readiness
 
-Before completing any PR handoff or dispatching semantic review:
+Before semantic review:
 
-1. Confirm the worker session and its association with the pull request.
-2. Require an open, non-draft PR and a full expected SHA matching the current live head.
+1. Confirm the worker session and PR association.
+2. Require an open, non-draft PR and full expected SHA matching the live head.
 3. Require `bash scripts/verify: pass` in the worker handoff.
-4. Require at least one required deterministic GitHub check and all such checks passing for that exact head. Exclude only the exact semantic-review publication context `ao/semantic-review` from this prerequisite.
-5. Re-read the live PR head immediately before dispatch; a mismatch invalidates the handoff and requires a fresh worker handoff.
-6. Resolve semantic-review identity as repository + PR number + expected head SHA and inspect active/completed reviewer Tasks. If that exact identity already has a reviewer lifecycle, do not request queue admission or create another reviewer; reconcile the existing lifecycle instead.
+4. Require at least one required deterministic GitHub check and all such checks passing for that exact head. Exclude only exact status context `ao/semantic-review`.
+5. Re-read the live PR head immediately before dispatch.
+6. Resolve `reviewKey = owner/repo#<PR>@<SHA>` and deduplicate against active/completed reviewer lifecycles.
 
-Pending deterministic checks are not failure. Defer without busy-polling. Route a clearly PR-caused CI failure to the owning worker as `CI_FIX_REQUEST`; escalate infrastructure, unrelated, or ambiguous failures for human attention.
+Pending deterministic checks are not failure. Defer without busy-polling. Route clearly PR-caused CI failure as `CI_FIX_REQUEST`; ambiguous/infrastructure failures require human attention.
 
-If semantic review is disabled and all readiness checks pass, stop the automated review lifecycle here. Report the exact qualified head, passing deterministic CI state, and that semantic review was disabled. Never publish `ao/semantic-review` for that lifecycle.
+If semantic review is disabled, stop after deterministic qualification. Do not create reviewer Tasks or `ao/semantic-review` publication.
 
 ## Acquire host-global review admission
 
-Semantic review is a host-constrained resource. Before creating any reviewer Task, request deterministic admission through the installed `~/.local/bin/ao-review-queue`. Queue identity is the exact `reviewKey` (`owner/repo#<PR>@<SHA>`), and queue state belongs to the orchestrator/control layer, never the worker or reviewer.
+Before creating a reviewer, request admission through `~/.local/bin/ao-review-queue` using the exact review identity. The queue is strict host-wide FIFO and belongs to AO/control state.
 
-- Request admission only after the exact-SHA readiness checks above pass. Supply only machine identity: review key, repository, canonical PR URL/number, expected head, this orchestrator session ID, owning worker session ID, repair cycle, and whether this is the one timeout-resume attempt.
-- `granted`: record the returned `ticketId`, immediately re-read the live PR head and deterministic required checks, and only then continue to reviewer creation. A grant is resource admission, not review authorization.
-- `queued`: record only `ticketId` + `reviewKey` and stop work on that review. Do not create a reviewer Task, start Monitor, publish semantic-review `pending`, poll queue state, send recurring status messages, or ask a model to retain/reason about the queued review. Queued state is inert deterministic machine state.
-- The queue is strict host-wide FIFO across projects. Duplicate requests for the same review key by the same orchestrator are idempotent; conflicting ownership or malformed queue state requires human attention.
-- A promoted ticket is delivered by one minimal `REVIEW_SLOT_GRANTED ticketId=<ID> reviewKey=<KEY>` message from the orchestrator that released the prior active ticket. On receipt, verify with ticket-scoped `ao-review-queue status <ticketId>` that the ticket is the active ticket owned by this orchestrator before doing anything else.
-- After promotion, repeat the exact-SHA/open/non-draft/deterministic-CI checks before reviewer creation. If requalification fails, release the active ticket without creating a reviewer, notify the next promoted orchestrator if one is returned, and handle the stale/configuration/CI state under the normal lifecycle rules.
-- When the native review attempt reaches a terminal result/failure/cancellation, release its active ticket promptly. If `release` returns a next ticket, send exactly one minimal `REVIEW_SLOT_GRANTED` message to that ticket's recorded orchestrator session. The queue helper never sends AO messages itself.
-- If an active ticket is stranded because its owning orchestrator/reviewer died, fail closed. There is no lease TTL, session probing, daemon, or automatic stale-ticket recovery; an operator must inspect `ao-review-queue status` and explicitly `cancel` the proven-dead ticket. If cancellation promotes a next ticket, the operator/orchestrator must deliver the same minimal grant message.
+- Request only after qualification. New queue requests have no resume option; the stored `resumeAttempt` field is retained only for old-state compatibility and is always false for v0.4 tickets. There is no automatic review resume in this version.
+- `queued`: retain only ticket identity; create no reviewer/model activity and publish no pending status.
+- `granted`: re-read live head and deterministic required checks before reviewer creation.
+- A promoted ticket is delivered by one `REVIEW_SLOT_GRANTED ticketId=<ID> reviewKey=<KEY>` message; verify ticket-scoped status before acting.
+- Keep the active ticket for the entire AO semantic-review lifecycle: native review execution, AO publish/discard decision, any native publication continuation, and terminal acknowledgement. The verdict alone is not terminal queue state because the same reviewer session is still reserved for the publication decision.
+- On terminal publication/discard/failure, release promptly and notify any promoted next orchestrator once.
+- A stranded active ticket requires explicit operator recovery; there is no lease TTL or automatic stale-ticket cancellation.
 
-## Dispatch a granted review
+## Review effort
 
-- Enter this section only while holding the active queue ticket for this exact review identity. Perform one final active/completed reviewer-Task deduplication check before spawning. If the identity is already represented, release the ticket, notify any promoted next orchestrator, and reconcile the existing lifecycle instead; the Skill's per-PR lock remains an additional guard.
-- Spawn one dedicated Qwen reviewer Task labelled `rev-pr-<NUMBER>`.
-- For dedicated reviewers, omit `--prompt` and `--issue` from `ao spawn`; after successful startup send the complete assignment with `ao send` to the returned session ID. Never retry by shrinking prompts. If reviewer creation or assignment delivery fails, release the active queue ticket, notify any promoted next orchestrator, and handle the dispatch failure without publishing a running semantic-review state.
-- The assignment must include `AO_SEMANTIC_REVIEW`, this orchestrator ID, the owning worker ID, canonical PR URL, expected SHA, `auto` as the effort request, reviewer-mode prohibitions, and an instruction to execute the installed `ao-pr-review` Skill's **AO reviewer Task entry point** using exactly those assigned values. Do not prescribe, reproduce, or reinterpret the Skill's helper/Monitor command; review execution transport belongs to the Skill.
-- Worker/reviewer replies use the `ao send` transport defined by `agentRules`; pane text is not a reply. Every message that expects a reply must provide this orchestrator session ID and explicitly require the worker/reviewer to reply with `ao send`. If an expected acknowledgement is missing, re-probe once; then use AO session/TUI evidence rather than busy-waiting or repeatedly prompting.
+AO-managed reviews MUST run at native `high` effort. Qwen native PR publication is high-only; low/medium reviews cannot later enter the supported `post comments` path. There is therefore no separate harness effort selector or project review-risk configuration.
 
-The Skill alone owns review execution and chooses review effort. The reviewer Task owns Qwen Monitor while the review runs; keep the orchestrator available. Do not poll, infer failure from runtime, impose a shorter timeout, or treat heartbeats as results.
+## Non-posting verdict preflight
 
-Wait for one `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE` message.
+Before creating the reviewer, run Qwen's deterministic argument parser for the exact raw argument string `<canonical-PR-URL> --effort high` using `qwen review parse-args --stdin`. Require: target resolves to that canonical PR URL, `effort == high`, `comment.requested == false`, `comment.effective == false`, and no unknown/extra tokens. This is an authorization preflight, not semantic artifact validation.
 
-## Validate the returned result
+`comment.effective == true` is a hard incompatibility: operator-scope `review.comment: true` would make the verdict-phase `/review` public before AO authorization. Do not create a reviewer, do not publish pending status, release the queue ticket, and require the operator to disable that standing setting before retrying.
 
-For `SEMANTIC_REVIEW_RESULT`:
+## Dispatch the persistent reviewer
 
-1. Read the exact `resultJson` path.
-2. Validate the result according to the installed `ao-pr-review` contract and require its identity to match this dispatch and message.
-3. Require the monitor transport expected by the installed Skill for AO review execution.
-4. Re-read the live PR head before acting. If it differs from the reviewed expected head, treat the lifecycle result as stale and discard the old verdict.
+- Spawn exactly one dedicated Qwen reviewer Task using this explicit command shape (substitute only project id and PR number):
 
-A missing, malformed, identity-mismatched, cancelled, or transport-failed result is a review error, never a pass. Do not silently retry.
+```text
+ao spawn --project <PROJECT_ID> --kind worker --harness qwen --mode chat --name rev-pr-<NUMBER>
+```
 
-A trusted `review_error` with `timedOut: true` is the sole automatic-resume case. Release the active review-admission ticket first. If the PR head is unchanged and this review identity has not yet been resumed, request a new queue ticket for the same review identity with `resumeAttempt=true`; strict FIFO applies, so this resume joins the back of the host-wide queue. Keep the original reviewer Task/worktree available but idle while queued: do not start Monitor, poll, or send recurring model messages. When the resume ticket is granted and requalified, instruct that same reviewer Task to re-execute the installed `ao-pr-review` Skill's AO reviewer Task entry point for the same assigned PR URL, expected SHA, and `auto` effort request so Qwen can attempt native continuation from surviving state. `--resume` is a request, not proof of continuation; do not claim resume succeeded unless Qwen explicitly reports it. Never spawn a replacement reviewer for this continuation. Allow at most one automatic resume per repository + PR + head SHA. If that resume times out/fails, the head changed, or the original reviewer/worktree is unavailable, stop for human attention.
+  `--kind worker` and `--mode chat` are mandatory and MUST NOT be omitted or inferred from AO defaults, stale command guides, or Qwen memories. Persistent idle follow-up turns are required by this protocol. The installed harness rules and current `ao spawn --help` surface are authoritative for this dispatch.
+- Omit issue/prompt payloads at spawn; after startup send the complete setup assignment with directed `ao send` using Chat steering.
+- Setup assignment MUST contain `AO_SEMANTIC_REVIEW`, orchestrator ID, owning worker ID, canonical PR URL, expected SHA, reviewKey, selected effort (`high`), repair cycle, and the reviewer-mode rules below.
+- The setup assignment is descriptive protocol context only. Even though it names future publish/discard controls, it MUST NOT be interpreted as a request to publish this review. Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH` control turn for the exact identity grants publication authorization.
+- Require `SEMANTIC_REVIEW_READY` before starting `/review`. On missing acknowledgement, re-probe once; otherwise fail closed.
+- After READY, re-read the live head one final time. If it moved before native review began, terminate the unused reviewer, release the ticket, and wait for a fresh handoff; there is no native review state to publish or discard.
+- Start the semantic review by sending a separate Chat turn containing exactly the native slash command:
 
-## Route the lifecycle result
+```text
+/review <canonical-PR-URL> --effort high
+```
 
-Use the semantic disposition produced by the trusted Skill result; do not redefine it.
+- Do not invoke `/ao-pr-review`, `qwen review run`, Qwen Monitor, the retired Python runner, or a second Qwen process.
+- After dispatch, keep the orchestrator available. Do not poll the reviewer or infer completion from runtime duration.
 
-- `pass`: report the reviewed SHA, deterministic CI state, semantic result, findings, and next human action. Never merge automatically.
-- `blocked`: route one `REVIEW_FIX_REQUEST` to the original worker only when the required repair is clearly PR-caused, in scope, outside project HITL boundaries, and narrowly actionable from the trusted findings. Otherwise require human attention.
-- `needs_human`: report the decision or uncertainty that requires judgment and pause.
-- `stale`: discard the old verdict and wait for a new exact SHA with passing deterministic verification/CI.
-- `review_error`: apply the single timeout-resume exception above; otherwise report the exact failure and retained evidence information. Do not issue a semantic code-repair request.
+Publish `ao/semantic-review=pending` only after reviewer setup and native `/review` dispatch succeed, under the publication policy.
+
+### Reliable Chat delivery
+
+Every orchestrator -> reviewer turn (setup, native `/review`, publish, discard) MUST start only when AO reports that reviewer Chat session **idle**. `--steer` against a working Chat turn changes that turn instead of starting the next one and can corrupt slash-command/control semantics. After receiving `SEMANTIC_REVIEW_READY` or `SEMANTIC_REVIEW_RESULT`, do not immediately steer: wait until AO session state is idle. A bounded session-state check used only to establish this transport boundary is permitted; do not poll semantic progress or repeatedly prompt the reviewer. A terminated/unrecoverable session fails closed.
+
+Every phase turn MUST use Chat steering with one stable phase-specific client message ID:
+
+```text
+ao send --session <REVIEWER_ID> --steer \
+  --client-message-id <REVIEW_KEY>:<setup|review|publish|discard> \
+  --message '<TURN>'
+```
+
+If delivery/result is uncertain, recover that exact steering operation; do not send a semantically equivalent turn under a new ID:
+
+```text
+ao send --session <REVIEWER_ID> --steer --recover-only \
+  --client-message-id <SAME_ID>
+```
+
+This is especially mandatory for publish: an uncertain response must never become a second `post comments` turn. A phase may have exactly one semantic send identity.
+
+## Receive the semantic result
+
+Wait for `SEMANTIC_REVIEW_RESULT` or `SEMANTIC_REVIEW_FAILURE` from the assigned reviewer.
+
+For `SEMANTIC_REVIEW_RESULT` require message identity to match the assigned reviewer session, reviewKey, PR URL, expected/reviewed head, and selected effort. Require `semanticEvent` from `APPROVE`, `COMMENT`, `REQUEST_CHANGES`; require `baseEvent` from the same vocabulary. This is lifecycle-envelope validation only, not semantic artifact validation.
+
+Re-read the live PR head immediately. If it differs from expected/reviewed head, the old result is stale and MUST NOT be published natively.
+
+Map the semantic result narrowly:
+
+- `semanticEvent == REQUEST_CHANGES` -> `blocked`.
+- `semanticEvent == APPROVE` -> `pass`.
+- `semanticEvent == COMMENT` with `baseEvent == REQUEST_CHANGES` -> `needs_human`.
+- other `semanticEvent == COMMENT` -> `pass`.
+- identity/session/publication-control failure -> `review_error`.
+- moved live head -> `stale`.
+
+Do not inspect/reclassify individual findings. Qwen's native convergence already owns what is published.
+
+There is no automatic timeout/resume path in this architecture. Interruption, reviewer-session loss, or incomplete native review fails closed to human attention. Never spawn a replacement reviewer to publish a prior result. If `SEMANTIC_REVIEW_FAILURE` arrives while the assigned reviewer is still available, send the exact-identity discard control before releasing the queue ticket. If the reviewer is unavailable, release only as a terminal review error.
+
+## Authorize publish or discard
+
+The reviewer MUST remain alive after `SEMANTIC_REVIEW_RESULT` until AO sends exactly one terminal control decision. Native `/review` completes the verdict phase (Steps 1–8) with evidence retained. The reviewer defers Step 9 cleanup until authorized publication succeeds or discard is confirmed.
+
+### Publish
+
+For unchanged exact identity, send the same idle reviewer a structured `AO_SEMANTIC_REVIEW_PUBLISH` turn containing reviewKey and expected head. Immediately before sending it, re-read the live head once more; any mismatch switches to discard/stale instead.
+
+The publish instruction authorizes only the native Qwen `/review` continuation equivalent to **post comments** for the already-completed review. It MUST NOT authorize a fresh review, implementation edits, labels, merge, or unrelated GitHub mutation.
+
+Wait for `SEMANTIC_REVIEW_PUBLISHED` or `SEMANTIC_REVIEW_PUBLICATION_FAILURE`. If publication failure carries `reasonCode=head_moved`, no native review was posted and the lifecycle becomes `stale`, not generic `review_error`.
+
+### Discard
+
+For stale results, human-only/ambiguous failure before publication, or an explicit lifecycle cancellation, send `AO_SEMANTIC_REVIEW_DISCARD` to the same reviewer. It authorizes no GitHub review mutation. Wait for `SEMANTIC_REVIEW_DISCARDED` or failure.
+
+If the reviewer session is unavailable before publish/discard completes, publication is forbidden. Publish `ao/semantic-review=error` only when exact publication identity is independently known and release the queue ticket. Do not recreate the session solely to publish.
+
+## Route the terminal result
+
+Only after publication/discard reaches a terminal acknowledgement:
+
+- `pass`: publish terminal success status and report ready for human integration.
+- `blocked`: publish terminal failure status. On repairCycle 0 only, route one `REVIEW_FIX_REQUEST` to the original worker telling it to address the native Qwen review on this exact PR/SHA, provided doing so is in scope and outside project HITL boundaries. AO does not copy/rewrite the findings.
+- `needs_human`: publish terminal error status and stop for judgment.
+- `stale`: publish stale/error only on the reviewed SHA when identity is trustworthy; never transfer the verdict to the new head.
+- `review_error`: publish error when exact identity is trustworthy and stop for human attention.
+- A publication failure with `reasonCode=head_moved` is routed as `stale`; never transfer the old verdict to the new head.
+
+Never merge automatically.
 
 ## One repair and rereview maximum
 
-- Accept `READY_FOR_REREVIEW` only with `repairCycle=1`, a new head SHA, passing local verification, and a previous reviewed SHA matching this lifecycle.
-- Repeat all readiness checks, obtain a fresh host-global admission ticket, and dispatch one fresh reviewer Task only after that ticket is granted and requalified.
-- If the rereview is not `pass`, stop for human attention. Never send a second automatic `REVIEW_FIX_REQUEST`.
-
-For every terminal state, report the implementation worker, reviewer Task, PR, exact SHA, deterministic CI state, trusted semantic disposition, findings, routed action if any, retained evidence information, and next human action.
+- The original worker may perform one repair cycle from the native GitHub review and return `READY_FOR_REREVIEW` with `repairCycle=1`, `previousReviewedSha`, new exact head, and passing local verification.
+- Repeat full readiness, FIFO admission, fresh persistent reviewer, native `/review`, authorization, and publication for the new SHA.
+- Any non-pass rereview stops for human attention. Never send a second automatic `REVIEW_FIX_REQUEST`.
 
 ## Semantic-review publication
 
-When semantic review is enabled, follow the installed global semantic-review publication policy for the narrowly authorized `ao/semantic-review` commit status and AO-owned PR summary. Publication policy does not authorize code changes, GitHub reviews/approvals, labels, merges, or other unrelated mutations.
+Follow `semanticReviewPublication.md`. AO owns only lifecycle authorization and `ao/semantic-review` commit status; native Qwen owns the GitHub review and inline threads. The harness no longer creates or updates an AO semantic-review summary comment.

@@ -8,6 +8,10 @@ The target user must have `python3`, `git`, `gh`, `qwen`, and `ao` available in 
 
 The harness does not install AO or Qwen themselves and never writes provider credentials, API keys, tokens, model endpoints, or `~/.qwen/settings.json`.
 
+The semantic-review runtime requires AO project sessions with `spawn --mode chat`, directed `ao send --steer` follow-up turns, and Qwen ACP support (`qwen --acp`). Installation verification probes those capabilities. Native `qwen review run` is no longer a harness prerequisite; the persistent reviewer executes `/review` directly in its own Chat/ACP conversation.
+
+AO two-phase publication also requires the operator-scope Qwen setting `review.comment` to be disabled/false. Qwen treats a standing `review.comment: true` exactly like `/review --comment`, which would publish during the initial verdict turn before AO authorization. The installer and installation verifier probe the effective native `parse-args` result and fail closed if automatic commenting is enabled; they do not rewrite Qwen settings.
+
 ### Operator-owned Qwen review runtime tuning
 
 Native Qwen review workflow concurrency and no-progress detection are Qwen runtime concerns, not harness policy. The harness therefore does not write or override these values. Operators running constrained or locally queued inference should set them in the Qwen host environment (for example `~/.qwen/.env`) before the Qwen/AO session starts:
@@ -40,17 +44,17 @@ bash install/install-host.sh
 bash install/verify-install.sh
 ```
 
-The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, every host-global Skill under `global/qwen/skills/` (currently `ao-pr-review` and the human-only `ao-semantic-review-override`), the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
+The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, the human-only `ao-semantic-review-override` Skill, the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
 
 Installation state is recorded at `${XDG_STATE_HOME:-$HOME/.local/state}/ao-qwen-code-harness/install-manifest.json`. A repeated identical install is a no-op. A target previously managed by the installer may be upgraded when its installed hash still matches the manifest.
 
-When upgrading a pre-queue harness installation, the installer refuses only while an existing `ao-pr-review` lock is held. Other AO sessions may remain running; orchestrators re-read the host-global rules before coordination actions. Fresh installs and later queue-aware upgrades need no special transition check.
+When upgrading a pre-queue harness installation, the installer retains the legacy lock check and refuses while an old `ao-pr-review` lock is held. For the v0.3.x → v0.4.0 review-backbone cutover, operators must also ensure no old reviewer/Monitor lifecycle is in flight before replacing host-global rules: persistent reviewer semantics and the retired helper must never be mixed within one review.
 
 If an unmanaged or locally modified target differs from the harness source, installation fails. `--replace` is explicit operator authorization to back up that target under the harness state directory and replace it.
 
 ## Inspect a repository before initialization
 
-Run the read-only task in `templates/prompts/inspect-project.md` and persist its JSON result. The result must conform to `config/project-inspection.schema.json` and contain no unresolved `decisionsRequired` entries before initialization.
+Run the read-only task in `templates/prompts/inspect-project.md` and persist its JSON result. The result must conform to the current `config/project-inspection.schema.json` (schemaVersion 2) and contain no unresolved `decisionsRequired` entries before initialization. Schema v2 removes the retired review-risk/effort payload.
 
 Human decisions identified during inspection must be resolved in the inspection result; `init-project` does not invent values to make rendering succeed.
 
@@ -69,7 +73,7 @@ Use `--semantic-review disabled` only for an explicit project decision. Semantic
 
 `--render-only` creates the repository baseline without AO registration and is useful for qualification or a separately controlled registration step.
 
-Initialization renders the production project contracts, review-risk config, lifecycle config, deterministic `scripts/verify`, GitHub verification workflow, and harness `.gitignore` additions. Existing conflicting project files are never overwritten; migration handles repositories that already carry contract files.
+Initialization renders the production project contracts, lifecycle config, deterministic `scripts/verify`, GitHub verification workflow, and harness `.gitignore` additions. Existing conflicting project files are never overwritten; migration handles repositories that already carry contract files.
 
 After rendering, the script registers the new project with `ao project add` and configures Qwen workers/orchestrator, short global-rule loaders, the inferred/inspected default branch, and the orchestrator refresh post-create hook through `ao project set-config`.
 

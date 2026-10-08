@@ -149,7 +149,7 @@ def make_ticket(args, ticket_id: int) -> dict:
         "orchestratorSessionId": args.orchestrator_session_id,
         "workerSessionId": args.worker_session_id,
         "repairCycle": args.repair_cycle,
-        "resumeAttempt": args.resume_attempt,
+        "resumeAttempt": False,
         "queuedAt": now_iso(),
     })
 
@@ -242,7 +242,6 @@ def parser() -> argparse.ArgumentParser:
     req.add_argument("--orchestrator-session-id", required=True)
     req.add_argument("--worker-session-id", required=True)
     req.add_argument("--repair-cycle", type=int, choices=(0, 1), default=0)
-    req.add_argument("--resume-attempt", action="store_true")
     rel = sub.add_parser("release"); rel.add_argument("ticket_id", type=int)
     can = sub.add_parser("cancel"); can.add_argument("ticket_id", type=int)
     sta = sub.add_parser("status"); sta.add_argument("ticket_id", type=int, nargs="?")

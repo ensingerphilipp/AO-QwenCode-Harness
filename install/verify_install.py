@@ -82,13 +82,16 @@ def main() -> int:
         elif rel in {Path(".local/bin/ao-refresh-orchestrator"), Path(".local/bin/ao-review-queue")} and not os.access(target, os.X_OK):
             failures.append(f"not executable: {target}")
 
+    retired_runner = home / ".qwen/skills/ao-pr-review/scripts/run_explicit_review.py"
+    if retired_runner.exists() or retired_runner.is_symlink():
+        failures.append(f"retired semantic-review runner still present: {retired_runner}")
+
     if not args.skip_runtime_checks:
         for command in ("git", "gh", "ao", "qwen", "python3"):
             if not shutil.which(command):
                 failures.append(f"required command missing: {command}")
         if not failures:
             helpers = {
-                "ao-pr-review": home / ".qwen/skills/ao-pr-review/scripts/run_explicit_review.py",
                 "ao-semantic-review-override": home / ".qwen/skills/ao-semantic-review-override/scripts/override_status.py",
             }
             for name, helper in helpers.items():
@@ -106,10 +109,42 @@ def main() -> int:
                 for flag in ("--session", "--message"):
                     if flag not in send.stdout:
                         failures.append(f"AO send lacks {flag}")
-            review = subprocess.run(["qwen", "review", "run", "--help"], text=True, capture_output=True, timeout=15)
-            for flag in ("--effort", "--json", "--fail-on", "--approval-mode", "--timeout-minutes"):
-                if flag not in review.stdout:
-                    failures.append(f"Qwen review run lacks {flag}")
+            spawn = subprocess.run(["ao", "spawn", "--help"], text=True, capture_output=True, timeout=15)
+            for flag in ("--harness", "--kind", "--mode", "--name"):
+                if flag not in spawn.stdout:
+                    failures.append(f"AO spawn lacks {flag}")
+            if "chat" not in spawn.stdout:
+                failures.append("AO spawn help does not advertise chat mode")
+            if "--steer" not in send.stdout:
+                failures.append("AO send lacks --steer required for persistent Chat follow-up turns")
+            qwen = subprocess.run(["qwen", "--help"], text=True, capture_output=True, timeout=15)
+            if "--acp" not in qwen.stdout:
+                failures.append("Qwen lacks --acp required for AO Chat reviewer sessions")
+            review_probe = subprocess.run(
+                ["qwen", "review", "parse-args", "--stdin"],
+                input="https://github.com/ao-harness/probe/pull/1 --effort high\n",
+                text=True, capture_output=True, timeout=15,
+            )
+            if review_probe.returncode != 0:
+                failures.append("Qwen review parse-args preflight is unavailable")
+            else:
+                try:
+                    review_verdict = json.loads(review_probe.stdout)
+                except json.JSONDecodeError:
+                    failures.append("Qwen review parse-args preflight returned invalid JSON")
+                else:
+                    target = review_verdict.get("target") if isinstance(review_verdict, dict) else None
+                    comment = review_verdict.get("comment") if isinstance(review_verdict, dict) else None
+                    if not isinstance(target, dict) or target.get("type") != "pr-url" or target.get("url") != "https://github.com/ao-harness/probe/pull/1":
+                        failures.append("Qwen review parse-args preflight returned an unexpected target")
+                    elif review_verdict.get("effort") != "high":
+                        failures.append("Qwen review parse-args preflight did not preserve explicit high effort")
+                    elif not isinstance(comment, dict) or comment.get("requested") is not False:
+                        failures.append("Qwen review parse-args preflight returned malformed comment metadata")
+                    elif comment.get("effective") is not False:
+                        failures.append("operator review.comment must be disabled for AO two-phase semantic review")
+                    elif review_verdict.get("extraTokens") != [] or review_verdict.get("unknownFlags") != []:
+                        failures.append("Qwen review parse-args preflight returned unexpected extra input")
             gh = subprocess.run(["gh", "pr", "checks", "--help"], text=True, capture_output=True, timeout=15)
             for flag in ("--required", "--json"):
                 if flag not in gh.stdout:

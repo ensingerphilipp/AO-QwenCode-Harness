@@ -10,12 +10,11 @@
     "facts",
     "templateValues",
     "verification",
-    "reviewRisk",
     "decisionsRequired"
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "repository": {
       "type": "object",
@@ -269,48 +268,6 @@
           "minItems": 1,
           "items": {
             "$ref": "#/$defs/command"
-          }
-        }
-      }
-    },
-    "reviewRisk": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "highRiskPaths",
-        "softRiskPaths",
-        "highRiskLabels",
-        "evidence"
-      ],
-      "properties": {
-        "highRiskPaths": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "softRiskPaths": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "highRiskLabels": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "evidence": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/evidence"
           }
         }
       }

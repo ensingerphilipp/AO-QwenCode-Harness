@@ -41,7 +41,7 @@ This reports project identity, active AO sessions, repository status, and whethe
 - the complete AO project object and config;
 - repository HEAD and status;
 - existing host-global AO/Qwen harness files;
-- the installed `ao-pr-review` Skill;
+- historical `ao-pr-review` host files for rollback, when present;
 - the host installer manifest;
 - project contract/verification files for reference;
 - SHA-256 hashes for copied files.
@@ -70,6 +70,10 @@ Unknown and project-specific AO config keys are preserved exactly. Existing non-
 
 If global installation or AO config update fails, automatic rollback restores host files, installer state, and the complete original AO project config. An incomplete rollback is reported as a separate failure and is never described as successful recovery.
 
+### v0.3.x review-backbone cutover
+
+The v0.4.0 host rules replace nested Monitor/`qwen review run` execution with one persistent Qwen Chat/ACP reviewer and remove the old runner. Do not apply this cutover while any old semantic-review lifecycle is active. After cutover, installed capability verification must confirm AO Chat mode/steering, Qwen ACP/native review-argument parsing, and a non-posting verdict configuration (`review.comment` disabled/false). Historical AO semantic-review summary comments are left untouched; new lifecycles publish native Qwen reviews plus the independent `ao/semantic-review` status.
+
 ## Repository contract migration
 
 After host/AO cutover is qualified, migrate repository-owned policy in a normal project branch and pull request. Do not mutate these files directly as part of host installation.
@@ -79,7 +83,7 @@ Use the evidence-driven project inspection contract to compare current project p
 - shrink project `QWEN.md` to the repository-local entry point;
 - remove generic/global rules from `PROJECT.md` and `.qwen/review-rules.md`;
 - keep project truth in `PROJECT.md` and `ARCHITECTURE.md`;
-- add `.agent-harness.json` and `.qwen/review-config.json`;
+- add `.agent-harness.json`; leave any existing `.qwen/review-config.json` untouched as retired legacy config (new harness versions no longer read or create it);
 - remove the project-local semantic-review publication policy after the global policy is qualified;
 - retain `scripts/verify` as the mechanical verification authority and CI as its wrapper;
 - ignore generated `.qwen/reviews/` evidence.

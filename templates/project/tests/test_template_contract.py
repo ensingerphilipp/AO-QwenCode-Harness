@@ -11,7 +11,7 @@ TOKEN_RE = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
 
 class TemplateContractTests(unittest.TestCase):
     def test_manifest_version(self):
-        self.assertEqual(MANIFEST["schemaVersion"], 1)
+        self.assertEqual(MANIFEST["schemaVersion"], 2)
 
     def test_rendered_file_tokens_match_manifest_exactly(self):
         for rel, expected in MANIFEST["renderedFiles"].items():
@@ -40,15 +40,6 @@ class TemplateContractTests(unittest.TestCase):
         self.assertEqual(config, {
             "schemaVersion": 1,
             "semanticReview": {"enabled": True},
-        })
-
-    def test_default_review_risk_config_is_additive_empty(self):
-        config = json.loads((ROOT / ".qwen/review-config.json").read_text())
-        self.assertEqual(config, {
-            "schemaVersion": 2,
-            "highRiskPaths": [],
-            "softRiskPaths": [],
-            "highRiskLabels": [],
         })
 
     def test_ci_delegates_to_standard_verification_entrypoint(self):

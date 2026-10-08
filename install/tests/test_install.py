@@ -44,6 +44,28 @@ class InstallHostTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc
 
+    def test_review_preflight_probe_accepts_nonposting_high(self):
+        install_host.validate_review_preflight_probe(json.dumps({
+            "target": {"type": "pr-url", "url": install_host.PROBE_REVIEW_URL},
+            "effort": "high",
+            "comment": {"requested": False, "effective": False},
+            "extraTokens": [], "unknownFlags": [],
+        }))
+
+    def test_review_preflight_probe_rejects_standing_comment(self):
+        with self.assertRaisesRegex(RuntimeError, "review.comment must be disabled"):
+            install_host.validate_review_preflight_probe(json.dumps({
+                "target": {"type": "pr-url", "url": install_host.PROBE_REVIEW_URL},
+                "effort": "high",
+                "comment": {"requested": False, "effective": True},
+                "extraTokens": [], "unknownFlags": [],
+            }))
+
+    def test_review_preflight_probe_rejects_malformed_contract(self):
+        for raw in ("not-json", json.dumps({"target": {}, "effort": "high", "comment": {"requested": False, "effective": False}, "extraTokens": [], "unknownFlags": []})):
+            with self.assertRaises(RuntimeError):
+                install_host.validate_review_preflight_probe(raw)
+
     def test_install_is_idempotent_and_verifiable(self):
         self.run_installer()
         self.run_installer()
@@ -59,11 +81,48 @@ class InstallHostTests(unittest.TestCase):
         )
         self.assertIn(".qwen/QWEN.md", manifest["files"])
         self.assertIn(".local/bin/ao-review-queue", manifest["files"])
-        self.assertIn(".qwen/skills/ao-pr-review/SKILL.md", manifest["files"])
+        self.assertNotIn(".qwen/skills/ao-pr-review/SKILL.md", manifest["files"])
+        self.assertNotIn(
+            ".qwen/skills/ao-pr-review/scripts/run_explicit_review.py",
+            manifest["files"],
+        )
+        self.assertNotIn(
+            ".qwen/skills/ao-pr-review/scripts/select_review_effort.py",
+            manifest["files"],
+        )
         self.assertIn(
             ".qwen/skills/ao-semantic-review-override/SKILL.md",
             manifest["files"],
         )
+
+    def _add_legacy_runner_to_manifest(self, content="legacy runner\n"):
+        runner = self.home / ".qwen/skills/ao-pr-review/scripts/run_explicit_review.py"
+        runner.parent.mkdir(parents=True, exist_ok=True)
+        runner.write_text(content)
+        manifest_path = self.root / "state/ao-qwen-code-harness/install-manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["files"][".qwen/skills/ao-pr-review/scripts/run_explicit_review.py"] = {
+            "sha256": install_host.sha256(runner), "mode": "0o755"
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        return runner
+
+    def test_upgrade_removes_unchanged_retired_runner(self):
+        self.run_installer()
+        runner = self._add_legacy_runner_to_manifest()
+        self.run_installer()
+        self.assertFalse(runner.exists())
+
+    def test_upgrade_refuses_modified_retired_runner_without_replace(self):
+        self.run_installer()
+        runner = self._add_legacy_runner_to_manifest()
+        runner.write_text("locally modified legacy runner\n")
+        proc = self.run_installer(check=False)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("locally modified retired managed target", proc.stderr)
+        self.assertTrue(runner.exists())
+        self.run_installer("--replace")
+        self.assertFalse(runner.exists())
 
     def test_queue_introduction_refuses_only_held_review_lock(self):
         prior = {"schemaVersion": 1, "files": {".qwen/QWEN.md": {}}}
@@ -145,7 +204,7 @@ class InitProjectTests(unittest.TestCase):
             "CI_SETUP_STEPS": "      - name: Setup\n        run: true",
         })
         doc = {
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "repository": {
                 "root": str(self.repo),
                 "remote": "https://github.com/acme/demo.git",
@@ -166,11 +225,6 @@ class InitProjectTests(unittest.TestCase):
                     "evidence": [{"path": "README.md", "detail": "test"}],
                 }],
             },
-            "reviewRisk": {
-                "highRiskPaths": ["src/security/**"],
-                "softRiskPaths": ["src/config/**"],
-                "highRiskLabels": ["security"], "evidence": [],
-            },
             "decisionsRequired": [],
         }
         self.inspection.write_text(json.dumps(doc))
@@ -188,7 +242,7 @@ class InitProjectTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         files = (
             "PROJECT.md", "ARCHITECTURE.md", "QWEN.md",
-            ".qwen/review-rules.md", ".qwen/review-config.json",
+            ".qwen/review-rules.md",
             ".agent-harness.json", ".github/workflows/verify.yml",
             "scripts/verify",
         )
@@ -200,11 +254,6 @@ class InitProjectTests(unittest.TestCase):
             text=True, capture_output=True,
         )
         self.assertEqual(verify.returncode, 0, verify.stderr)
-        risk = json.loads(
-            (self.repo / ".qwen/review-config.json").read_text()
-        )
-        self.assertEqual(risk["highRiskPaths"], ["src/security/**"])
-        self.assertEqual(risk["softRiskPaths"], ["src/config/**"])
 
     def test_unresolved_decision_blocks_without_writes(self):
         doc = json.loads(self.inspection.read_text())
