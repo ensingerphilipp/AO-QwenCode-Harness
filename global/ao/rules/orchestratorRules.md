@@ -31,6 +31,8 @@ If semantic review is disabled, stop after deterministic qualification. Do not c
 
 Before creating a reviewer, request admission through `~/.local/bin/ao-review-queue` using the exact review identity. The queue is strict host-wide FIFO and belongs to AO/control state.
 
+For both `READY_FOR_REVIEW` and `READY_FOR_REREVIEW`, request admission **only after** the exact live PR head has at least one required deterministic CI check and **all required deterministic checks pass**. Missing, pending, or `action_required` checks (including fork-PR `Approve and dispatch`) mean defer with **no queue ticket**, even if local verification passed. Re-qualify the head and CI before requesting admission when the checks become green; never reserve a slot while awaiting CI or human CI approval.
+
 - Request only after qualification. New queue requests have no resume option; the stored `resumeAttempt` field is retained only for old-state compatibility and is always false for v0.4 tickets. There is no automatic review resume in this version.
 - `queued`: retain only ticket identity; create no reviewer/model activity and publish no pending status.
 - `granted`: re-read live head and deterministic required checks before reviewer creation.
