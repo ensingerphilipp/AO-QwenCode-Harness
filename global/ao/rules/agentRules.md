@@ -111,7 +111,7 @@ The only valid AO review turn is:
 
 Any other target or effort is a protocol error: send `SEMANTIC_REVIEW_FAILURE` and do not start review. The native Step 1 parse verdict must also have `comment.effective == false`; if it is true, stop before semantic execution/publication and report `SEMANTIC_REVIEW_FAILURE` because AO publication authorization has not yet occurred.
 
-This is a **two-phase AO-managed review**. The publication decision is intentionally unresolved while the semantic verdict is produced. Execute the native `/review` normally to completion, including its normal persistence and cleanup behavior. Do not post comments/reviews during this verdict phase and do not rerun the review merely to report its result.
+This is a **two-phase AO-managed review**. The publication decision is intentionally unresolved while the semantic verdict is produced. Execute native `/review` Steps 1–8, including verdict composition and persistent artifact storage, but DEFER Step 9 (`qwen review cleanup <target>`). Preserve all temporary review evidence and worktree state until the later exact-identity AO publish/discard decision. Do not post comments/reviews during this verdict phase, do not run Step 9 yet, and do not rerun or reconstruct the review merely to report its result.
 
 After native review completion, send one compact lifecycle envelope using the completed native review's semantic values:
 
@@ -151,7 +151,7 @@ On that message:
 
 1. Verify the control identity against this conversation's assignment. Any mismatch => `SEMANTIC_REVIEW_PUBLICATION_FAILURE`, no GitHub mutation.
 2. Continue the **already-completed** native review through Qwen's normal native `post comments` follow-up in this same session. Do not start a fresh `/review` or manually construct a submit payload.
-3. Let Qwen's native review machinery own its normal follow-up mechanics, presubmit, convergence, provider downgrade rules, event/body/inline composition, submission, and any internal recovery it normally performs. AO adds no temporary-state rules.
+3. Let Qwen's native review machinery own presubmit, convergence, provider downgrade rules, event/body/inline composition and submission. Only after native `post comments` submit succeeds, execute the deferred Step 9 (`qwen review cleanup <target>`) once. Never clean up before successful submit; if submission fails, retain the evidence and report publication failure. Do not reconstruct the review.
 4. AO authorization remains bound to the assigned exact SHA. If the native follow-up determines that the live PR head no longer equals the assigned reviewed SHA, do not publish the old verdict and do not convert this authorization into a review of the new SHA. Send `SEMANTIC_REVIEW_PUBLICATION_FAILURE` with `reasonCode: "head_moved"` and the observed `liveHead`; AO must qualify the new head separately.
 5. Send on success:
 
@@ -184,7 +184,7 @@ Any publication error is terminal for the AO lifecycle unless Qwen's native foll
 
 Only an `AO_SEMANTIC_REVIEW_DISCARD` control turn from the assigned orchestrator for the exact assigned identity authorizes discard.
 
-Do not post anything. Send:
+Do not post anything. On a valid exact-identity discard, execute deferred Step 9 (`qwen review cleanup <target>`) once without GitHub review mutation, then send:
 
 ```text
 ao send --session <ASSIGNED_ORCHESTRATOR_ID> --message 'SEMANTIC_REVIEW_DISCARDED
