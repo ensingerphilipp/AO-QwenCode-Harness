@@ -8,7 +8,7 @@ Last updated: 2026-10-08
 - B — global Qwen engineering layer
 - C — generalized AO worker and orchestrator rules
 - D — global semantic-review publication policy
-- E — generalized `ao-pr-review` review-protocol support package
+- E — native review contract consolidated into AO rules
 - F — production project baseline templates
 - G — deterministic verification profiles
 - H — evidence-driven project inspection contract
@@ -17,8 +17,8 @@ Last updated: 2026-10-08
 - J — host-independent installation and new-project registration
 - K — Premiumizearr-Nova migration, installed runtime verification, and accepted tracker-intake smoke qualification
 - Operator escape hatch — model-hidden manual `ao/semantic-review` status override packaged and managed as a host-global Skill
-- `ao-pr-review` v0.4.0 — persistent Qwen Chat/ACP reviewer backbone using native `/review`; AO-managed reviews are fixed to native high because posting is high-only; the old risk/effort selector and `.qwen/review-config.json` consumption, nested `qwen review run`, Monitor envelopes, synthetic `result.json`, semantic artifact validation, automatic resume, and AO-composed semantic summary comments are removed
-- Two-phase native publication — AO preflights a non-posting verdict (`comment.effective=false`), revalidates the exact head after the verdict, then authorizes the same reviewer to publish or discard; native `/review` may complete its normal cleanup and Qwen owns the internal mechanics of later `post comments` continuation
+- Native review v0.4.0 — persistent Qwen Chat/ACP reviewer backbone using native `/review`; AO-managed reviews are fixed to native high because posting is high-only; the old risk/effort selector and `.qwen/review-config.json` consumption, nested `qwen review run`, Monitor envelopes, synthetic `result.json`, semantic artifact validation, automatic resume, and AO-composed semantic summary comments are removed
+- Two-phase native publication — AO preflights a non-posting verdict (`comment.effective=false`), revalidates the exact head after the verdict, then authorizes the same reviewer to publish or discard; native Step 9 cleanup is deferred until successful submission or discard and Qwen owns the internal mechanics of later `post comments` continuation
 - Host-global semantic-review admission — deterministic strict FIFO before reviewer creation; queued reviews are model-idle and the active ticket remains held through the AO publish/discard phase and terminal acknowledgement
 
 ## Latest qualification

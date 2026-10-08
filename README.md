@@ -71,9 +71,9 @@ AO remains the workflow authority. Qwen's native `/review` is the semantic autho
 3. AO obtains the host-global FIFO slot. AO-managed review effort is fixed to native `high` because native PR publication is high-only. Before creating a reviewer, native argument parsing must prove the verdict turn is non-posting (`comment.effective == false`) for the exact PR command.
 4. AO creates one dedicated **Chat/ACP** Qwen reviewer with explicit `--kind worker --harness qwen --mode chat` (never inferred from defaults) and establishes `reviewKey = owner/repo#PR@SHA`.
 5. AO sends one native `/review <PR-URL> --effort high` turn to that same session.
-6. Qwen completes the verdict-only native review normally and reports semantic event metadata to AO; the same reviewer conversation remains available.
+6. Qwen completes native verdict and persistence (Steps 1–8), defers cleanup, and reports semantic event metadata; the same reviewer conversation remains available.
 7. AO revalidates the live head. If unchanged it sends one publish authorization; if moved/cancelled it sends discard.
-8. The same Qwen session either follows native `post comments` or posts nothing. Qwen owns the internal state/persistence mechanics of that follow-up.
+8. The same reviewer follows native `post comments` and cleans up after successful submit, or discards without posting and cleans up once.
 9. AO publishes the terminal `ao/semantic-review` status, releases the FIFO slot and may route one repair cycle.
 10. A human decides whether to merge.
 
@@ -103,7 +103,7 @@ Queued reviews create no reviewer or model activity. The FIFO ticket remains hel
 
 ### Two-phase publication is an AO authorization boundary
 
-The verdict phase is non-posting. Native `/review` may complete its normal cleanup. AO then checks the exact head and decides publish/discard; if publication is authorized, the same reviewer conversation follows Qwen's normal `post comments` path. AO leaves Qwen's internal follow-up mechanics entirely to native review behavior.
+The non-posting verdict retains native evidence until AO authorizes publish/discard on the exact head. The same reviewer completes native `post comments` and only then cleans up; discard cleans up without posting. Failed submission retains evidence.
 
 Before creating the reviewer, AO uses Qwen's native argument parser to prove that the exact verdict-phase command has `comment.effective == false`. A standing operator `review.comment: true` is incompatible with this harness lifecycle because Qwen would otherwise treat the initial review as already authorized to publish.
 
@@ -121,9 +121,9 @@ There is no automatic timeout/resume in the persistent-review architecture. If t
 
 A first blocking native review may be routed once to the original worker when it is in scope and outside HITL boundaries. Any non-pass rereview stops for human attention. Merge is always human-controlled.
 
-## Review support package
+## Native review
 
-`global/qwen/skills/ao-pr-review/` now contains only protocol/policy documentation. The production review path has no semantic runner, effort selector, `qwen review run`, Qwen Monitor envelope, semantic artifact validator, AO findings compositor, or AO-owned semantic-review summary comment.
+No separate `ao-pr-review` Skill is installed. AO worker/orchestrator rules define lifecycle behavior, the global publication policy owns authorization/status, and Qwen native `/review` owns semantic review and posting.
 
 AO-managed reviews always use native `high` effort because Qwen's supported publication path is high-only. The previous `.qwen/review-config.json` risk/effort configuration is retired; existing repository copies are left untouched but new templates no longer create or consume it.
 

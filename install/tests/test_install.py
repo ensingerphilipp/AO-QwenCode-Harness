@@ -81,7 +81,7 @@ class InstallHostTests(unittest.TestCase):
         )
         self.assertIn(".qwen/QWEN.md", manifest["files"])
         self.assertIn(".local/bin/ao-review-queue", manifest["files"])
-        self.assertIn(".qwen/skills/ao-pr-review/SKILL.md", manifest["files"])
+        self.assertNotIn(".qwen/skills/ao-pr-review/SKILL.md", manifest["files"])
         self.assertNotIn(
             ".qwen/skills/ao-pr-review/scripts/run_explicit_review.py",
             manifest["files"],

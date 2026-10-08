@@ -116,12 +116,6 @@ def backup(project: dict, repo: Path, home: Path) -> Path:
         "host/.local/bin/ao-refresh-orchestrator": home / ".local/bin/ao-refresh-orchestrator",
         "host/.local/bin/ao-review-queue": home / ".local/bin/ao-review-queue",
     }
-    expected_skill = ROOT / "global/qwen/skills/ao-pr-review"
-    for source in sorted(expected_skill.rglob("*")):
-        if source.is_file() and "__pycache__" not in source.parts and source.suffix not in {".pyc", ".pyo"}:
-            rel = source.relative_to(expected_skill)
-            target = home / ".qwen/skills/ao-pr-review" / rel
-            roots[f"host/{target.relative_to(home)}"] = target
     for source in sorted((home / ".qwen/skills/ao-pr-review").rglob("*")):
         if source.is_file() and "__pycache__" not in source.parts:
             rel = source.relative_to(home)

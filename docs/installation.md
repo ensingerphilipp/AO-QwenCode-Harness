@@ -44,7 +44,7 @@ bash install/install-host.sh
 bash install/verify-install.sh
 ```
 
-The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, every host-global Qwen Skill/support package under `global/qwen/skills/` (currently the non-invocable `ao-pr-review` protocol package and the human-only `ao-semantic-review-override` Skill), the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
+The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, the human-only `ao-semantic-review-override` Skill, the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
 
 Installation state is recorded at `${XDG_STATE_HOME:-$HOME/.local/state}/ao-qwen-code-harness/install-manifest.json`. A repeated identical install is a no-op. A target previously managed by the installer may be upgraded when its installed hash still matches the manifest.
 

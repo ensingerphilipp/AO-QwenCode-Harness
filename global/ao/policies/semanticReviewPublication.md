@@ -52,10 +52,12 @@ Never transfer status to another SHA. A new PR head requires a fresh qualified l
 
 ## Two-phase native publication
 
-The verdict and publication decision are separate AO phases, but Qwen owns the internal lifecycle of each native review turn. The initial `/review` may complete its normal persistence and cleanup behavior. After AO revalidates identity/head, the same reviewer session either:
+The verdict and publication decision are separate AO phases, but Qwen owns the internal lifecycle of each native review turn. The initial `/review` completes Steps 1–8 and retains native evidence; Step 9 cleanup is deferred until successful publication or discard. After AO revalidates identity/head, the same reviewer session either:
 
-- receives publish authorization and follows Qwen's normal native `post comments` continuation; or
-- receives discard and performs no GitHub review mutation.
+- receives publish authorization, follows native `post comments`, and cleans up once after successful submission; or
+- receives discard, cleans up once, and makes no GitHub review mutation.
+
+Publication failure retains evidence for diagnosis.
 
 The host-global review-admission ticket remains active through this entire AO lifecycle and is released only after publication/discard/failure reaches a terminal acknowledgement.
 

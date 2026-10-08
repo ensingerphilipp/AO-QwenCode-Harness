@@ -41,7 +41,7 @@ This reports project identity, active AO sessions, repository status, and whethe
 - the complete AO project object and config;
 - repository HEAD and status;
 - existing host-global AO/Qwen harness files;
-- the installed `ao-pr-review` Skill/support package;
+- historical `ao-pr-review` host files for rollback, when present;
 - the host installer manifest;
 - project contract/verification files for reference;
 - SHA-256 hashes for copied files.

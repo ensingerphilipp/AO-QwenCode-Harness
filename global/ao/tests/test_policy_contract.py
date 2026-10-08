@@ -5,11 +5,12 @@ ROOT = Path(__file__).resolve().parents[3]
 ORCH = (ROOT / 'global/ao/rules/orchestratorRules.md').read_text()
 PUB = (ROOT / 'global/ao/policies/semanticReviewPublication.md').read_text()
 AGENT = (ROOT / 'global/ao/rules/agentRules.md').read_text()
-SKILL = (ROOT / 'global/qwen/skills/ao-pr-review/SKILL.md').read_text()
-CONTRACT = (ROOT / 'global/qwen/skills/ao-pr-review/references/contract.md').read_text()
 
 
 class AOPolicyContractTests(unittest.TestCase):
+    def test_retired_skill_is_absent(self):
+        self.assertFalse((ROOT / 'global/qwen/skills/ao-pr-review').exists())
+
     def test_semantic_toggle_remains_fail_closed(self):
         for phrase in ('.agent-harness.json', 'enabled by default', 'exactly `false` disables'):
             self.assertIn(phrase, ORCH)
@@ -42,11 +43,9 @@ class AOPolicyContractTests(unittest.TestCase):
         self.assertIn('review.comment: true', ORCH)
         self.assertIn('comment.effective == false', AGENT)
         self.assertIn('comment.effective == false', PUB)
-        self.assertIn('comment.effective == false', CONTRACT)
 
     def test_nonposting_preflight_precedes_reviewer_creation_everywhere(self):
         self.assertLess(ORCH.index('## Non-posting verdict preflight'), ORCH.index('## Dispatch the persistent reviewer'))
-        self.assertLess(SKILL.index('AO preflights the exact review arguments'), SKILL.index('AO creates exactly one persistent Qwen Chat/ACP reviewer'))
         self.assertLess(PUB.index('run the deterministic non-posting argument preflight'), PUB.index('Create one persistent Chat/ACP reviewer'))
 
     def test_setup_protocol_text_is_not_publication_authorization(self):
@@ -55,12 +54,15 @@ class AOPolicyContractTests(unittest.TestCase):
         self.assertIn('Treat the setup assignment as protocol description only, not publication authorization', AGENT)
         self.assertIn('Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH`', AGENT)
 
-    def test_two_phase_authorization_is_explicit_without_freezing_native_cleanup(self):
+    def test_two_phase_authorization_defers_native_cleanup(self):
         for phrase in ('AO_SEMANTIC_REVIEW_PUBLISH', 'AO_SEMANTIC_REVIEW_DISCARD'):
             self.assertIn(phrase, ORCH)
             self.assertIn(phrase, AGENT)
         self.assertIn('publication decision is intentionally unresolved', AGENT)
-        self.assertIn('allowed to complete its normal lifecycle, including cleanup', ORCH)
+        self.assertIn('defers Step 9 cleanup', ORCH)
+        self.assertIn('DEFER Step 9', AGENT)
+        self.assertIn('Only after native `post comments` submit succeeds', AGENT)
+        self.assertIn('Publication failure retains evidence', PUB)
         self.assertIn('same reviewer session is still reserved for the publication decision', ORCH)
 
     def test_native_qwen_owns_publication_projection(self):
@@ -72,7 +74,6 @@ class AOPolicyContractTests(unittest.TestCase):
     def test_no_automatic_resume_or_replacement_reviewer(self):
         self.assertIn('There is no automatic timeout/resume path', ORCH)
         self.assertIn('Never spawn a replacement reviewer', ORCH)
-        self.assertIn('No automatic resume is defined', CONTRACT)
 
     def test_chat_control_delivery_is_idempotent(self):
         for phrase in ('--client-message-id', '--recover-only', 'must never become a second `post comments` turn'):
@@ -87,7 +88,6 @@ class AOPolicyContractTests(unittest.TestCase):
         self.assertIn('reasonCode=head_moved', ORCH)
         self.assertIn('do not publish the old verdict', AGENT)
         self.assertIn('do not convert this authorization into a review of the new SHA', AGENT)
-        self.assertIn('reasonCode=head_moved', CONTRACT)
 
     def test_reviewer_messages_are_explicit(self):
         for phrase in (

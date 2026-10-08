@@ -118,7 +118,7 @@ There is no automatic timeout/resume path in this architecture. Interruption, re
 
 ## Authorize publish or discard
 
-The reviewer MUST remain alive after `SEMANTIC_REVIEW_RESULT` until AO sends exactly one terminal control decision. Native `/review` itself is allowed to complete its normal lifecycle, including cleanup; AO does not prescribe or depend on Qwen's temporary review-state retention.
+The reviewer MUST remain alive after `SEMANTIC_REVIEW_RESULT` until AO sends exactly one terminal control decision. Native `/review` completes the verdict phase (Steps 1–8) with evidence retained. The reviewer defers Step 9 cleanup until authorized publication succeeds or discard is confirmed.
 
 ### Publish
 
