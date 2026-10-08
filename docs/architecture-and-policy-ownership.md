@@ -153,6 +153,8 @@ A read-only first-project inspection must identify languages, package managers, 
 
 It then proposes project-specific contents for the baseline files without inventing unsupported policy. Observed facts and human decisions must remain clearly separated.
 
+The original implementation worker processes routed native GitHub review findings in bounded related groups, optionally tracked with native Qwen `todo_write`, and sends one final rereview handoff after completing in-scope fixes and verification. No additional AO fix scheduler is introduced.
+
 ## Deployment quality standard
 
 Files committed under `global/`, `templates/`, `lifecycle/`, `config/`, and `install/` are deployment artifacts, not drafts. They must be internally consistent, documented, testable, fail closed where safety or identity is uncertain, avoid hardcoded host/project identity, and be suitable for production deployment at the time they are committed.

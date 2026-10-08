@@ -42,6 +42,17 @@ class AOPolicyContractTests(unittest.TestCase):
         self.assertIn('READY_FOR_REVIEW', AGENT)
         self.assertIn('READY_FOR_REREVIEW', AGENT)
 
+    def test_review_fixes_use_bounded_native_work_items_and_one_handoff(self):
+        section = AGENT.split('### Routed fixes', 1)[1].split('## Reviewer mode:', 1)[0]
+        for phrase in (
+            'group related findings', 'one group at a time',
+            'todo_write', 'GitHub finding identities',
+            'exactly one `READY_FOR_REREVIEW`', 'no intermediate review handoffs',
+        ):
+            self.assertIn(phrase, section)
+        self.assertIn('Independently preserve assigned scope and project HITL boundaries', section)
+        self.assertIn('Never perform a second automatic semantic repair', section)
+
     def test_ao_review_effort_is_fixed_high(self):
         self.assertIn('MUST run at native `high` effort', ORCH)
         self.assertIn('/review <ASSIGNED_CANONICAL_URL> --effort high', AGENT)

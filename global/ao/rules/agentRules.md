@@ -61,7 +61,8 @@ If no active orchestrator ID is available for a PR-bearing handoff, surface `REV
 
 - Act on `CI_FIX_REQUEST` only for an in-scope failure routed by the orchestrator. Apply the narrow repair, run `bash scripts/verify`, push, and send a fresh `READY_FOR_REVIEW` for the new head.
 - Act on `REVIEW_FIX_REQUEST` only for the exact PR/reviewed SHA routed by the orchestrator. Inspect the **native Qwen GitHub review** and apply all eligible in-scope review fixes together. Do not depend on an AO paraphrase or second finding projection. Independently preserve assigned scope and project HITL boundaries.
-- After semantic repair, run `bash scripts/verify`, push, and send `READY_FOR_REREVIEW`.
+- For multiple findings, group related findings into bounded work items. Use native Qwen `todo_write` when useful; work on one group at a time, loading only relevant details while retaining GitHub finding identities. Complete all eligible in-scope fixes before final verification; no intermediate review handoffs.
+- After semantic repair, run `bash scripts/verify`, push the final head, and send exactly one `READY_FOR_REREVIEW`.
 
 ```text
 ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'READY_FOR_REREVIEW
