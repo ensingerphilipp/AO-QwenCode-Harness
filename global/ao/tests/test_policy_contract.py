@@ -15,6 +15,16 @@ class AOPolicyContractTests(unittest.TestCase):
         for phrase in ('.agent-harness.json', 'enabled by default', 'exactly `false` disables'):
             self.assertIn(phrase, ORCH)
 
+    def test_rereview_queue_admission_requires_green_ci(self):
+        # PR #105 held queue ticket 25 while fork checks were action_required.
+        section = ORCH.split('## Acquire host-global review admission', 1)[1].split('## Review effort', 1)[0]
+        self.assertIn('READY_FOR_REVIEW', section)
+        self.assertIn('READY_FOR_REREVIEW', section)
+        self.assertIn('action_required', section)
+        self.assertIn('no queue ticket', section)
+        self.assertIn('all required deterministic checks pass', section)
+        self.assertLess(section.index('all required deterministic checks pass'), section.index('Re-qualify the head and CI before requesting admission'))
+
     def test_reviewer_spawn_is_explicit_chat_worker(self):
         command = 'ao spawn --project <PROJECT_ID> --kind worker --harness qwen --mode chat --name rev-pr-<NUMBER>'
         self.assertIn(command, ORCH)
