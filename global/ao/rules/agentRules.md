@@ -35,10 +35,11 @@ ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'TASK_COMPLETE
 ## Implementation mode
 
 1. Implement only the assigned scope and respect project-defined human-in-the-loop boundaries.
-2. Run `bash scripts/verify`. Do not hand off while the required local gate fails.
-3. For an implementation change intended for integration, commit and push the scoped change and create or update its pull request. Pull-request-based development is the harness baseline; do not invent a PR for a read-only/no-change task.
-4. Resolve the canonical PR URL and exact 40-character head SHA for every PR-bearing handoff.
-5. Send `READY_FOR_REVIEW` to the active orchestrator with `ao send`.
+2. Complete the browser-facing verification below when the change affects browser-visible UI or browser behavior.
+3. Run `bash scripts/verify`. Do not hand off while the required local gate fails.
+4. For an implementation change intended for integration, commit and push the scoped change and create or update its pull request. Pull-request-based development is the harness baseline; do not invent a PR for a read-only/no-change task.
+5. Resolve the canonical PR URL and exact 40-character head SHA for every PR-bearing handoff.
+6. Send `READY_FOR_REVIEW` to the active orchestrator with `ao send`.
 
 ```text
 ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'READY_FOR_REVIEW
@@ -56,6 +57,17 @@ ao send --session <ACTIVE_ORCHESTRATOR_ID> --message 'READY_FOR_REVIEW
 After sending the handoff, remain available and stop. The orchestrator owns deterministic CI qualification and, when enabled, semantic-review dispatch. Do not invoke `/ao-pr-review`, `/review`, or `qwen review run` yourself.
 
 If no active orchestrator ID is available for a PR-bearing handoff, surface `REVIEW_HANDOFF_BLOCKED` in the current task and stop. Semantic-review-disabled projects still use the same exact-PR/SHA handoff so the orchestrator can qualify deterministic CI without dispatching semantic review.
+
+### Browser-facing verification
+
+For any change that affects browser-visible UI or browser behavior, verify the affected user path in this AO session before final local verification and handoff.
+
+- Use the session-owned AO browser for the application under development; do not substitute Qwen Browser Use, a browser MCP, or another provider/browser runtime for that application.
+- Prefer AO's semantic browser inspection/interactions and page-error checks for routine verification. Read AO's current browser/preview guidance for exact commands instead of duplicating command syntax here.
+- For layout, styling, responsive, rendering, or other visually material changes, capture and visually inspect the rendered result.
+- Use screenshots only when pixel or visual evidence adds information; do not make screenshots the default for routine semantic interaction.
+- Resolve in-scope defects before `READY_FOR_REVIEW` or `READY_FOR_REREVIEW`. If required browser verification cannot be performed because the preview, runtime, or browser capability is unavailable, report the exact blocker instead of silently skipping it.
+- This requirement also applies to routed CI or review fixes when the repair changes browser-facing behavior.
 
 ### Routed fixes
 
