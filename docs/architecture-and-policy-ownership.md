@@ -21,7 +21,7 @@ Update this document in the same commit whenever an architectural assumption, ow
 | Layer | Owns | Must not own |
 |---|---|---|
 | Global Qwen | Universal engineering behavior and project-contract discovery | AO orchestration protocol or product-specific rules |
-| Global AO worker | Worker/reviewer lifecycle, handoffs, routed repair behavior | Semantic reasoning, publication projection, or project architecture |
+| Global AO worker | Worker/reviewer lifecycle, handoffs, routed repair behavior, implementation-time browser QA policy | Semantic reasoning, publication projection, browser command mechanics, or project architecture |
 | Global AO orchestrator | Coordination, readiness, admission, fixed-high review dispatch, native publication authorization, status, routing | Product implementation or semantic findings/convergence |
 | Native Qwen `/review` | Semantic reasoning, findings, convergence, native GitHub review publication/cleanup; fixed high-effort AO review contract | AO scheduling, exact-head authorization, repair routing, merge |
 | Global operator Skill | Explicit human-only administrative escape hatches | Autonomous/model invocation or normal lifecycle ownership |
@@ -35,6 +35,7 @@ Update this document in the same commit whenever an architectural assumption, ow
 |---|---|---|
 | `global/qwen/QWEN.md` | Global Qwen | Universal engineering behavior |
 | `global/ao/rules/agentRules.md` | Global AO | Worker and reviewer lifecycle |
+| AO upstream `using-ao` browser/preview guidance | AO runtime | Session-owned browser/preview mechanics, routing, isolation, and command semantics |
 | `global/ao/rules/orchestratorRules.md` | Global AO | Coordination and routing lifecycle |
 | `global/ao/policies/semanticReviewPublication.md` | Global AO | GitHub semantic-review publication lifecycle |
 | `global/qwen/skills/ao-semantic-review-override/` | Global operator Skill | Human-only administrative override of the `ao/semantic-review` required status |
@@ -121,6 +122,8 @@ The structure is intentional: host-global deployable assets are separated from p
 36. Persistent reviewer creation always uses explicit AO worker + Qwen + Chat mode flags; transport mode must never be inferred from daemon defaults, stale AO command documentation, or model memory. Current installed harness rules and CLI capability are authoritative.
 36. AO two-phase review requires the initial native `/review` to be non-posting. Before reviewer creation, AO uses Qwen's native argument parser to require `comment.effective == false`; operator-scope `review.comment: true` is therefore an incompatible host setting and installation verification must fail closed rather than modify it. The reviewer independently checks the same native Step 1 fact as defense in depth.
 37. Reviewer setup/rules may describe future publication controls but never constitute current publication authorization. Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH` turn for the exact review identity authorizes the native `post comments` continuation.
+38. Browser QA policy is layered rather than duplicated. `global/ao/rules/agentRules.md` requires implementation workers to exercise affected browser-facing behavior before handoff and to use visual inspection only when it adds evidence. AO's upstream `using-ao` browser/preview guidance owns the exact session-browser commands, target routing, isolation, and capture mechanics. Deterministic browser regression checks belong in each project's `scripts/verify` and CI when supported by repository evidence; project-specific UI/UX invariants belong in project contracts and tests. The AO session-owned browser is the required interactive browser for the application under development; separate Qwen/browser-MCP runtimes are not substitutes for that page.
+
 
 ## Deduplication rules
 
@@ -132,6 +135,7 @@ A rule may be referenced in multiple places, but it is defined normatively in on
 - Product HITL boundaries are defined by `PROJECT.md`; global rules only require Qwen/AO to respect them.
 - Architecture facts are defined by `ARCHITECTURE.md`; review rules may reference them but should not duplicate them.
 - Universal Qwen behavior is defined by global `QWEN.md`, not copied into every project.
+- Browser QA policy is defined by global AO worker rules; AO upstream documentation owns browser command mechanics, deterministic browser gates belong in `scripts/verify`/CI, and project-specific UI/UX invariants remain project-owned.
 
 ## Project template rendering contract
 

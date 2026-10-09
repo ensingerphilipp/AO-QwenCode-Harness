@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[3]
 ORCH = (ROOT / 'global/ao/rules/orchestratorRules.md').read_text()
 PUB = (ROOT / 'global/ao/policies/semanticReviewPublication.md').read_text()
 AGENT = (ROOT / 'global/ao/rules/agentRules.md').read_text()
+ARCH = (ROOT / 'docs/architecture-and-policy-ownership.md').read_text()
 
 
 class AOPolicyContractTests(unittest.TestCase):
@@ -52,6 +53,22 @@ class AOPolicyContractTests(unittest.TestCase):
             self.assertIn(phrase, section)
         self.assertIn('Independently preserve assigned scope and project HITL boundaries', section)
         self.assertIn('Never perform a second automatic semantic repair', section)
+
+    def test_browser_qa_policy_is_worker_owned_and_mechanics_stay_in_ao(self):
+        section = AGENT.split('### Browser-facing verification', 1)[1].split('### Routed fixes', 1)[0]
+        for phrase in (
+            'session-owned AO browser',
+            'do not substitute Qwen Browser Use',
+            "semantic browser inspection/interactions",
+            'visually inspect the rendered result',
+            'Use screenshots only when pixel or visual evidence adds information',
+            'report the exact blocker instead of silently skipping it',
+        ):
+            self.assertIn(phrase, section)
+        self.assertNotIn('browserVerification', AGENT)
+        self.assertIn('AO upstream `using-ao` browser/preview guidance', ARCH)
+        self.assertIn('Browser QA policy is layered rather than duplicated', ARCH)
+        self.assertIn('deterministic browser gates belong in `scripts/verify`/CI', ARCH)
 
     def test_ao_review_effort_is_fixed_high(self):
         self.assertIn('MUST run at native `high` effort', ORCH)
