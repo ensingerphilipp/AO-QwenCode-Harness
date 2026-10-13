@@ -8,6 +8,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
+try:
+    from ao_cli import ensure_ao_cli, ensure_shell_path
+except ModuleNotFoundError:
+    from install.ao_cli import ensure_ao_cli, ensure_shell_path
 import shutil
 import subprocess
 import sys
@@ -21,6 +25,8 @@ FILE_MAP = {
     ROOT / "global/ao/policies/semanticReviewPublication.md": Path(".ao/policies/semanticReviewPublication.md"),
     ROOT / "lifecycle/ao-refresh-orchestrator": Path(".local/bin/ao-refresh-orchestrator"),
     ROOT / "lifecycle/ao-review-queue": Path(".local/bin/ao-review-queue"),
+    ROOT / "install/ao-launcher": Path(".local/bin/ao"),
+    ROOT / "install/ao_cli.py": Path(".local/lib/ao-qwen-code-harness/ao_cli.py"),
 }
 SKILLS_SOURCE_ROOT = ROOT / "global/qwen/skills"
 SKILLS_TARGET_ROOT = Path(".qwen/skills")
@@ -66,24 +72,24 @@ def command_version(command: str) -> str:
     return text.splitlines()[0] if text else "unknown"
 
 
-def check_commands(skip: bool) -> dict[str, str]:
+def check_commands(skip: bool, ao_binary: str | None = None) -> dict[str, str]:
     if skip:
         return {}
     versions = {}
     for command in REQUIRED_COMMANDS:
-        path = shutil.which(command)
+        path = ao_binary if command == "ao" and ao_binary else shutil.which(command)
         if not path:
             raise RuntimeError(f"required command not found in PATH: {command}")
-        versions[command] = command_version(command) if command in {"ao", "qwen"} else path
-    ao_help = subprocess.run(["ao", "project", "set-config", "--help"], text=True, capture_output=True, timeout=15)
+        versions[command] = command_version(path) if command in {"ao", "qwen"} else path
+    ao_help = subprocess.run([ao_binary or "ao", "project", "set-config", "--help"], text=True, capture_output=True, timeout=15)
     required_flags = ("--config-json", "--agent-rules", "--orchestrator-rules", "--post-create", "--worker-agent", "--orchestrator-agent")
     if ao_help.returncode != 0 or any(flag not in ao_help.stdout for flag in required_flags):
         raise RuntimeError("installed AO CLI lacks the required project set-config surface")
-    send_help = subprocess.run(["ao", "send", "--help"], text=True, capture_output=True, timeout=15)
+    send_help = subprocess.run([ao_binary or "ao", "send", "--help"], text=True, capture_output=True, timeout=15)
     send_flags = ("--session", "--message", "--steer")
     if send_help.returncode != 0 or any(flag not in send_help.stdout for flag in send_flags):
         raise RuntimeError("installed AO CLI lacks the required directed Chat steering surface")
-    spawn_help = subprocess.run(["ao", "spawn", "--help"], text=True, capture_output=True, timeout=15)
+    spawn_help = subprocess.run([ao_binary or "ao", "spawn", "--help"], text=True, capture_output=True, timeout=15)
     spawn_flags = ("--harness", "--kind", "--mode", "--name")
     if spawn_help.returncode != 0 or any(flag not in spawn_help.stdout for flag in spawn_flags) or "chat" not in spawn_help.stdout:
         raise RuntimeError("installed AO CLI lacks the required Chat-mode spawn surface")
@@ -157,7 +163,6 @@ def install(args: argparse.Namespace) -> int:
     state_dir = xdg_state / "ao-qwen-code-harness"
     manifest_path = state_dir / "install-manifest.json"
     prior = load_manifest(manifest_path)
-    versions = check_commands(args.skip_command_check)
     files = managed_sources()
 
     collisions = []
@@ -168,7 +173,11 @@ def install(args: argparse.Namespace) -> int:
         target = home / rel_target
         new_hash = sha256(source)
         old_entry = prior["files"].get(str(rel_target))
-        if target.exists():
+        if target.exists() or target.is_symlink():
+            # Explicitly replace a preexisting AO CLI symlink only on operator approval.
+            if target.is_symlink() and rel_target == Path(".local/bin/ao") and args.replace:
+                operations.append(("replace", source, target, rel_target, new_hash))
+                continue
             if not target.is_file() or target.is_symlink():
                 collisions.append(f"non-regular target: {target}")
                 continue
@@ -213,6 +222,10 @@ def install(args: argparse.Namespace) -> int:
         return 0
 
     require_queue_upgrade_safety(prior, home)
+    # Probe the bundled GUI CLI directly. A fresh host does not need an older
+    # independently installed 'ao' command before the harness is bootstrapped.
+    ao_binary = str(ensure_ao_cli(home)) if not args.skip_command_check else None
+    versions = check_commands(args.skip_command_check, ao_binary)
 
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_root = state_dir / "backups" / stamp
@@ -222,7 +235,10 @@ def install(args: argparse.Namespace) -> int:
         if action == "replace" and target.exists():
             backup = backup_root / rel_target
             backup.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(target, backup)
+            if target.is_symlink():
+                backup.symlink_to(os.readlink(target))
+            else:
+                shutil.copy2(target, backup)
         if action != "noop":
             temp = target.with_name(target.name + ".ao-harness.tmp")
             shutil.copyfile(source, temp)
@@ -250,6 +266,9 @@ def install(args: argparse.Namespace) -> int:
     temp_manifest.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.chmod(temp_manifest, 0o600)
     os.replace(temp_manifest, manifest_path)
+    if not args.skip_command_check:
+        if ensure_shell_path(home):
+            print("Added user-scoped launcher directory to ~/.profile (effective in new login shells).")
     print(f"Installed AO + Qwen harness globals for {home}")
     print(f"Manifest: {manifest_path}")
     print("Qwen model/provider/auth settings were not modified.")

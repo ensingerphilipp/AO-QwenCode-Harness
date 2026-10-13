@@ -4,9 +4,9 @@ This document defines the supported installation path for the AO + Qwen Code har
 
 ## Prerequisites
 
-The target user must have `python3`, `git`, `gh`, `qwen`, and `ao` available in `PATH`. Qwen must already have a working model/provider/auth configuration for that user, and GitHub CLI authentication must be appropriate for the repositories the harness will review and publish to.
+The target user must have `python3`, `git`, `gh`, and `qwen` in `PATH`. The AO AppImage must be present and executable at `~/.ao/agent-orchestrator.AppImage` or be discoverable via the registered AO desktop launchers. An existing `ao` CLI is not required: the installer probes the AppImage-bundled CLI directly. Qwen must already have a working model/provider/auth configuration for that user, and GitHub CLI authentication must be appropriate for the repositories the harness will review and publish to.
 
-The harness does not install AO or Qwen themselves and never writes provider credentials, API keys, tokens, model endpoints, or `~/.qwen/settings.json`.
+The harness does not install the AO GUI/AppImage or Qwen themselves and never writes provider credentials, API keys, tokens, model endpoints, or `~/.qwen/settings.json`. On a user-scoped Linux AO AppImage install, it installs a stable `~/.local/bin/ao` launcher and synchronizes the bundled CLI from `~/.ao/agent-orchestrator.AppImage` into a private cache. The launcher rechecks the image metadata at every CLI invocation and refreshes the cached binary after GUI updates. Other AO installations are not silently uninstalled.
 
 The semantic-review runtime requires AO project sessions with `spawn --mode chat`, directed `ao send --steer` follow-up turns, and Qwen ACP support (`qwen --acp`). Installation verification probes those capabilities. Native `qwen review run` is no longer a harness prerequisite; the persistent reviewer executes `/review` directly in its own Chat/ACP conversation.
 
@@ -43,6 +43,8 @@ bash install/install-host.sh --dry-run
 bash install/install-host.sh
 bash install/verify-install.sh
 ```
+
+The installer deploys `~/.local/bin/ao` plus a Python launcher helper at `~/.local/lib/ao-qwen-code-harness/ao_cli.py`. The launcher extracts the AppImage-bundled CLI on first use or after an AppImage update; it never runs or changes a different AO version. An existing unmanaged `ao` symlink requires explicit `--replace` and is backed up. If `~/.profile` does not already mention `~/.local/bin`, the installer adds a guarded PATH entry for future login shells; it refuses to overwrite a symlinked or nonregular profile. AppImage absence or failed extraction fails closed; the GUI/AppImage is not installed or updated by the harness.
 
 The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, the human-only `ao-semantic-review-override` Skill, the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
 

@@ -44,6 +44,81 @@ class InstallHostTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc
 
+    def test_ao_cli_discovers_desktop_registered_appimage(self):
+        from install.ao_cli import find_appimage
+        image = self.home / "Applications/custom-ao.AppImage"
+        image.parent.mkdir()
+        image.write_text("fake")
+        desktop = self.home / ".local/share/applications/agent-orchestrator.desktop"
+        desktop.parent.mkdir(parents=True)
+        desktop.write_text(f'[Desktop Entry]\nExec="{image}" %U\n')
+        self.assertEqual(find_appimage(self.home), image.resolve())
+
+    def test_ao_cli_path_profile_added_only_once(self):
+        from install.ao_cli import ensure_shell_path
+        profile = self.home / ".profile"
+        profile.write_text("# existing contents\n")
+        self.assertTrue(ensure_shell_path(self.home))
+        once = profile.read_text()
+        self.assertIn('export PATH="$HOME/.local/bin:$PATH"', once)
+        self.assertFalse(ensure_shell_path(self.home))
+        self.assertEqual(profile.read_text(), once)
+
+    def test_ao_cli_profile_symlink_is_not_modified(self):
+        from install.ao_cli import ensure_shell_path
+        other = self.home / "other-profile"
+        other.write_text("preserve me")
+        (self.home / ".profile").symlink_to(other)
+        with self.assertRaisesRegex(RuntimeError, "non-regular"):
+            ensure_shell_path(self.home)
+        self.assertEqual(other.read_text(), "preserve me")
+
+    def test_ao_cli_syncs_appimage_and_refreshes_after_update(self):
+        from install.ao_cli import ensure_ao_cli
+        image = self.home / ".ao/agent-orchestrator.AppImage"
+        image.parent.mkdir()
+        # A lightweight fake AppImage: the extraction produces a small executable.
+        image.write_text(
+            "#!/bin/sh\n"
+            "test \"$1\" = --appimage-extract || exit 5\n"
+            "mkdir -p squashfs-root/resources/daemon\n"
+            "printf '#!/bin/sh\necho bundled-v1\n' > squashfs-root/resources/daemon/ao\n"
+            "chmod +x squashfs-root/resources/daemon/ao\n"
+        )
+        image.chmod(0o755)
+        cli = ensure_ao_cli(self.home)
+        self.assertEqual(subprocess.check_output([str(cli)], text=True).strip(), "bundled-v1")
+        first_mtime = cli.stat().st_mtime_ns
+        self.assertEqual(ensure_ao_cli(self.home), cli)
+        self.assertEqual(cli.stat().st_mtime_ns, first_mtime)
+        image.write_text(image.read_text().replace("bundled-v1", "bundled-v2"))
+        self.assertEqual(subprocess.check_output([str(ensure_ao_cli(self.home))], text=True).strip(), "bundled-v2")
+        self.assertEqual(json.loads((cli.parent / "source.json").read_text())["size"], image.stat().st_size)
+
+    def test_ao_cli_refuses_missing_appimage_and_keeps_previous_cache(self):
+        from install.ao_cli import ensure_ao_cli
+        image = self.home / ".ao/agent-orchestrator.AppImage"
+        with self.assertRaises((OSError, RuntimeError)):
+            ensure_ao_cli(self.home)
+        self.assertFalse((self.home / ".local/state/ao-qwen-code-harness/ao-cli/ao").exists())
+
+    def test_old_ao_symlink_needs_explicit_replacement_and_is_backed_up(self):
+        old = self.home / "old-ao"
+        old.write_text("old cli")
+        target = self.home / ".local/bin/ao"
+        target.parent.mkdir(parents=True)
+        target.symlink_to(old)
+        denied = self.run_installer(check=False)
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertTrue(target.is_symlink())
+        self.run_installer("--replace")
+        self.assertFalse(target.is_symlink())
+        self.assertTrue(target.is_file())
+        backups = list((self.root / "state/ao-qwen-code-harness/backups").rglob("ao"))
+        self.assertEqual(len(backups), 1)
+        self.assertTrue(backups[0].is_symlink())
+        self.assertEqual(backups[0].resolve(), old.resolve())
+
     def test_review_preflight_probe_accepts_nonposting_high(self):
         install_host.validate_review_preflight_probe(json.dumps({
             "target": {"type": "pr-url", "url": install_host.PROBE_REVIEW_URL},

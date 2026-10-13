@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+exec python3 "$HOME/.local/lib/ao-qwen-code-harness/ao_cli.py" "$@"
