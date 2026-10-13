@@ -177,7 +177,7 @@ Do not copy secrets, Qwen sessions, AO databases, worktrees, caches, or generate
 
 ### Prerequisites
 
-The target user must already have `python3`, `git`, `gh`, `qwen`, and `ao` in `PATH`. Qwen model/provider authentication and GitHub CLI authentication must already work. The harness does not install AO or Qwen and never writes model settings or credentials.
+The target user must already have `python3`, `git`, `gh`, `qwen`, and `ao` in `PATH`. Qwen model/provider authentication and GitHub CLI authentication must already work. The harness does not install the AO GUI/AppImage or Qwen and never writes model settings or credentials. On supported Linux AppImage hosts it manages a stable `~/.local/bin/ao` launcher synchronized with the AppImage-bundled CLI.
 
 ### Install host-global assets
 

@@ -87,6 +87,23 @@ def main() -> int:
         failures.append(f"retired semantic-review runner still present: {retired_runner}")
 
     if not args.skip_runtime_checks:
+        # The installed AO entry point must be the harness-managed launcher.
+        expected_ao = home / ".local/bin/ao"
+        resolved_ao = shutil.which("ao")
+        if not resolved_ao or Path(resolved_ao).absolute() != expected_ao:
+            failures.append(f"ao in PATH is not the harness-managed launcher: {resolved_ao}")
+        # Source metadata must match the currently installed GUI AppImage.
+        try:
+            from ao_cli import image_signature, find_appimage, CACHE
+        except ModuleNotFoundError:
+            from install.ao_cli import image_signature, find_appimage, CACHE
+        try:
+            metadata = json.loads((home / CACHE / "source.json").read_text())
+            binary = home / CACHE / "ao"
+            if metadata != image_signature(find_appimage(home)) or not binary.is_file() or not os.access(binary, os.X_OK):
+                failures.append("AO CLI cache is missing/stale versus installed GUI AppImage")
+        except (OSError, ValueError) as exc:
+            failures.append(f"AO CLI AppImage binding is unavailable: {exc}")
         for command in ("git", "gh", "ao", "qwen", "python3"):
             if not shutil.which(command):
                 failures.append(f"required command missing: {command}")
