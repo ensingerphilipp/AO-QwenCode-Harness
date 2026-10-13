@@ -30,7 +30,7 @@ PR #105 on 2026-10-08 established the persistent same-session `/review` → late
 ## Current host deployment
 
 - Current operator baseline is AO **v0.13.2** with Qwen Code **0.24.7**. The harness qualifies required AO/Qwen behavior by CLI capability rather than version strings.
-- The current local-inference host has **three available inference slots**, so its operator-owned Qwen runtime environment caps both tool and native-review workflow concurrency at `3` (`QWEN_CODE_MAX_TOOL_CONCURRENCY=3`, `QWEN_CODE_MAX_WORKFLOW_CONCURRENCY=3`) and uses `QWEN_CODE_WORKFLOW_STALL_SECONDS=600`.
+- As verified 2026-10-13, the local-inference host has **four logical inference slots** (two requests per SGLang estate, two estates), each with a 262,144-token context limit. Its operator-owned Qwen runtime caps tool and native-review workflow concurrency at `4` (`QWEN_CODE_MAX_TOOL_CONCURRENCY=4`, `QWEN_CODE_MAX_WORKFLOW_CONCURRENCY=4`); the documented stall setting is `QWEN_CODE_WORKFLOW_STALL_SECONDS=600`. These settings are host-specific and are not set by the harness.
 - On the inspected `opencode` host, Qwen reports 0.24.7 while `~/.local/bin/ao` still resolves to the prior user-scoped `agent-orchestrator-0.13.1` directory and `ao --version` reports `dev`; that host must be upgraded/repointed before it can be claimed as an independently verified 0.13.2 deployment.
 - Worker/reviewer → orchestrator lifecycle communication uses directed `ao send`; persistent reviewers run in Chat/ACP mode and AO uses steered follow-up turns for setup, native `/review`, and publish/discard control.
 - `ao-reconcile` and `ao-reboot-recovery` were intentionally removed from the current host and are not baseline harness components.

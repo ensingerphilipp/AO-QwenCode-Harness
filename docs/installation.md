@@ -24,15 +24,15 @@ QWEN_CODE_WORKFLOW_STALL_SECONDS=<host-appropriate-seconds>
 
 `agents.maxParallelAgents` in Qwen settings controls ordinary/background Agent-tool subagents; native review workflow concurrency is resolved separately. For native review, `QWEN_CODE_MAX_WORKFLOW_CONCURRENCY` takes precedence, with `QWEN_CODE_MAX_TOOL_CONCURRENCY` used as its fallback. `QWEN_CODE_WORKFLOW_STALL_SECONDS` controls how long a workflow agent may produce no workflow-visible progress before Qwen aborts and retries that dispatch. These are host-specific operational limits and must not be copied into project policy or treated as portable harness defaults.
 
-On the current local-inference deployment, the concurrency value is `3` because the host exposes **three available local inference slots**. The deployed operator settings are therefore:
+On the current local-inference deployment (2026-10-13), the concurrency value is `4` because two SGLang TP2 estates each permit two concurrent requests (**four logical inference slots**). Each request has a 262,144-token configured context limit; this is not a 262,144-token output limit. The deployed operator settings are therefore:
 
 ```text
-QWEN_CODE_MAX_TOOL_CONCURRENCY=3
-QWEN_CODE_MAX_WORKFLOW_CONCURRENCY=3
+QWEN_CODE_MAX_TOOL_CONCURRENCY=4
+QWEN_CODE_MAX_WORKFLOW_CONCURRENCY=4
 QWEN_CODE_WORKFLOW_STALL_SECONDS=600
 ```
 
-The value `3` is derived from that host's three inference slots, not from an AO/Qwen harness rule. A host with different inference capacity should choose a matching concurrency limit. Likewise, the `600`-second stall window is local runtime tuning for slow queueing/compaction/inference and is not a universal review-policy value. Environment changes apply only to Qwen processes started after the change; an already-running native review keeps the environment it inherited at launch.
+The value `4` is derived from that host's four logical inference slots, not from an AO/Qwen harness rule. A host with different inference capacity should choose a matching concurrency limit. Likewise, the `600`-second stall window is local runtime tuning for slow queueing/compaction/inference and is not a universal review-policy value. Environment changes apply only to Qwen processes started after the change; an already-running native review keeps the environment it inherited at launch.
 
 ## Install host-global assets
 
