@@ -46,7 +46,7 @@ bash install/verify-install.sh
 
 The installer deploys `~/.local/bin/ao` plus a Python launcher helper at `~/.local/lib/ao-qwen-code-harness/ao_cli.py`. The launcher extracts the AppImage-bundled CLI on first use or after an AppImage update; it never runs or changes a different AO version. An existing unmanaged `ao` symlink requires explicit `--replace` and is backed up. If `~/.profile` does not already mention `~/.local/bin`, the installer adds a guarded PATH entry for future login shells; it refuses to overwrite a symlinked or nonregular profile. AppImage absence or failed extraction fails closed; the GUI/AppImage is not installed or updated by the harness.
 
-The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, the human-only `ao-semantic-review-override` Skill, the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
+The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, the human-only `ao-semantic-review-override` and `ao-replace-orchestrator` Skills, the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
 
 Installation state is recorded at `${XDG_STATE_HOME:-$HOME/.local/state}/ao-qwen-code-harness/install-manifest.json`. A repeated identical install is a no-op. A target previously managed by the installer may be upgraded when its installed hash still matches the manifest.
 
