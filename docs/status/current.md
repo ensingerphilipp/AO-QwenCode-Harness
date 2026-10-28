@@ -29,24 +29,9 @@ PR #105 on 2026-10-08 established the persistent same-session `/review` → late
 
 ## Current host deployment
 
-Installed versions on `opencode`, verified on **2026-10-28**:
-
-| Component | Installed version | Verification source |
-|---|---|---|
-| AO GUI/AppImage | **0.14.5** | `resources/app.asar` → `package.json` inside `~/.ao/agent-orchestrator.AppImage` |
-| AO CLI | Bundled with **AO 0.14.5**; reports `ao version dev` | SHA-256 of AppImage member `resources/daemon/ao` equals the active CLI cache; see provenance below |
-| Qwen Code | **0.26.0** | `qwen --version` and the installed package/bundle manifests under `~/.local/lib/qwen-code/` |
-| Qwen bundled Node.js | **22.23.3** | `~/.local/lib/qwen-code/node/bin/node --version` |
-| Python | **3.14.4** | `python3 --version` |
-| Git | **2.53.0** | `git --version` |
-| GitHub CLI | **2.103.0** | `gh --version` |
-| `ao-semantic-review-override` Skill | **0.1.0** | Installed `VERSION` equals tracked `global/qwen/skills/ao-semantic-review-override/VERSION` |
-
-These are observed host versions, not minimum supported versions or a claim of end-to-end release qualification. The harness qualifies required AO/Qwen behavior by CLI capability rather than version strings. References to native-review **v0.4.0** in this record and migration guidance identify the harness architecture generation; there is no separately installed `ao-pr-review` Skill or standalone review package in the current managed deployment.
-
-- The version audit passed `bash install/verify-install.sh --project-id premiumizearr-nova`; all 13 managed host files matched authoritative harness `main` at `cefe9733e7af8a11d458caba5e1298a6647d762a` byte-for-byte. The install manifest is a historical installation receipt: its `commandVersions` and `sourceCommit` describe the installation event, not necessarily current software after operator updates.
+- Current observed opencode deployment has AO GUI/AppImage **v0.14.5** with Qwen Code **0.26.0**. The harness qualifies required AO/Qwen behavior by CLI capability rather than version strings.
 - As verified 2026-10-13, the local-inference host has **four logical inference slots** (two requests per SGLang estate, two estates), each with a 262,144-token context limit. Its operator-owned Qwen runtime caps tool and native-review workflow concurrency at `4` (`QWEN_CODE_MAX_TOOL_CONCURRENCY=4`, `QWEN_CODE_MAX_WORKFLOW_CONCURRENCY=4`); the documented stall setting is `QWEN_CODE_WORKFLOW_STALL_SECONDS=600`. These settings are host-specific and are not set by the harness.
-- AO CLI provenance: the installed **0.14.5** AppImage's `resources/daemon/ao` and `~/.local/state/ao-qwen-code-harness/ao-cli/ao` both have SHA-256 `9ead981b3ed27f7c4251ac1c78e7d46e703ef0857c9892520a99adfd8b55ddf0`. `~/.local/bin/ao` is the managed launcher; it checks for AppImage updates on each invocation. The historical 0.13.1 user-scoped tree was retired after the launcher originally bound to the then-installed 0.13.7 AppImage. The CLI's `dev` string is not a semantic release version.
+- On the inspected `opencode` host, the AO AppImage embeds version 0.14.5. The old 0.13.1 user-scoped tree was retired after the harness-managed `~/.local/bin/ao` launcher successfully bound to the 0.13.7 AppImage CLI. `ao --version` still prints `dev` upstream, so binary origin is established from the AppImage source signature and extracted CLI hash, not that string. The CLI launcher checks for AppImage updates on each invocation.
 - Worker/reviewer → orchestrator lifecycle communication uses directed `ao send`; persistent reviewers run in Chat/ACP mode and AO uses steered follow-up turns for setup, native `/review`, and publish/discard control.
 - `ao-reconcile` and `ao-reboot-recovery` were intentionally removed from the current host and are not baseline harness components.
 

@@ -233,7 +233,7 @@ This is the same fail-fast, non-repairing gate invoked by GitHub Actions.
 
 The reusable policy layers, project templates, verification profiles, installation/migration tooling, host-global deterministic review admission, and manual override are implemented. The prior review architecture had an accepted production-project smoke qualification covering issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge. The new v0.4 persistent native-review backbone is implemented but still requires one clean end-to-end release-qualification run that produces exactly one native GitHub review.
 
-Fresh-host/fresh-project end-to-end qualification also remains deliberately deferred. See [Current Harness Implementation Status](docs/status/current.md) for the authoritative progress record. Verified installed component versions and their provenance are maintained in the dated [current host deployment record](docs/status/current.md#current-host-deployment).
+Fresh-host/fresh-project end-to-end qualification also remains deliberately deferred. See [Current Harness Implementation Status](docs/status/current.md) for the authoritative progress record.
 
 ## Guiding invariant
 
