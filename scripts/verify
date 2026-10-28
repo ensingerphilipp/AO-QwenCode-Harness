@@ -24,6 +24,8 @@ run "Host install and project initialization tests" \
   python3 -m unittest discover -s install/tests -v
 run "Manual semantic-review override Skill regression suite" \
   python3 -m unittest discover -s global/qwen/skills/ao-semantic-review-override/tests -v
+run "Manual orchestrator replacement Skill regression suite" \
+  python3 -m unittest discover -s global/qwen/skills/ao-replace-orchestrator/tests -v
 
 run "JSON parse validation" python3 - <<'PY'
 import json
