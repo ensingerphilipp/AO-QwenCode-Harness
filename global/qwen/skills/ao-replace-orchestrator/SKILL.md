@@ -1,6 +1,6 @@
 ---
 name: ao-replace-orchestrator
-description: Replace a stopped AO project orchestrator with a fresh Qwen Chat orchestrator using a verified AO build, then check its durable provider branch. Operator recovery only.
+description: Replace a stopped AO project orchestrator with a fresh Qwen Chat orchestrator using AO commands, then check its current provider branch. Operator recovery only.
 argument-hint: '<project-id>'
 user-invocable: true
 disable-model-invocation: true
@@ -16,8 +16,8 @@ Use the session-private `<skill-args-file>` supplied by Qwen Code. Execute exact
 python3 <skill-dir>/scripts/replace.py --args-file <injected-path>
 ```
 
-The helper requires a verified AO build containing upstream fix `e65fa0b27c3a3ec6e6a81fa451ab630adcdff572` (PR #7124). The host must have the upstream AO source repository at `~/src/agent-orchestrator`; the helper verifies the daemon's embedded Git revision is descended from the fix. The current AO 0.14.5 fails this gate. Upgrade AO before invoking; do not override the gate.
+The helper does not block any AO version. AO 0.14.5 lacks upstream fix #7124: a replacement may work during its first live controller run and still fail on a later restart or resume because the project branch retains the prior provider handle. The postflight check observes only the current state; it cannot prove that a later resume will work. Report this limitation when invoked on 0.14.5 or another build without the fix.
 
 The helper reads project and session state, requires exactly one exited orchestrator, terminates it using `ao session kill`, invokes AO's supported `spawn` interface once with explicit Qwen Chat orchestrator flags, and checks the new session's provider handle against the active project conversation branch. It does not edit SQLite, kill processes directly, retry a failed spawn, merge, or run a semantic review. If postflight fails, leave the session for operator inspection; do not launch another replacement automatically.
 
-Report the helper's complete outcome. An old session with a mismatch remains historical evidence. For an already affected session, automatic repair of that same session is separate upstream work (PR #6709). This skill replaces it with a new one on a fixed AO build.
+Report the helper's complete outcome. An old session with a mismatch remains historical evidence. For an already affected session, automatic repair of that same session is separate upstream work (PR #6709). This skill replaces it with a new session, subject to the installed AO build's resume behavior.

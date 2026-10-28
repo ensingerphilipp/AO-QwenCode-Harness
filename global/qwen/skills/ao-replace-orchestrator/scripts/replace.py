@@ -9,9 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-FIX = 'e65fa0b27c3a3ec6e6a81fa451ab630adcdff572'
 PROJECT = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$')
-SOURCE = Path.home() / 'src/agent-orchestrator'
 DB = Path.home() / '.ao/data/ao.db'
 
 
@@ -35,32 +33,10 @@ def load_args(path):
     return project
 
 
-def revision(binary):
-    metadata = run('go', 'version', '-m', str(binary))
-    match = re.search(r'^\s*build\s+vcs\.revision=([0-9a-f]{40})$', metadata, re.M)
-    if not match:
-        raise RuntimeError('AO binary has no trustworthy embedded Git revision')
-    return match.group(1)
-
-
-def gate_fixed_daemon():
+def gate_healthy_daemon():
     status = json.loads(run('ao', 'status', '--json'))
     if status.get('state') != 'ready' or status.get('health') != 'ok':
         raise RuntimeError('AO daemon is not healthy')
-    daemon = Path(status.get('executablePath') or '')
-    if not daemon.is_file():
-        raise RuntimeError('cannot inspect the running AO daemon binary')
-    daemon_rev = revision(daemon)
-    cli_rev = revision(Path.home() / '.local/state/ao-qwen-code-harness/ao-cli/ao')
-    if daemon_rev != cli_rev:
-        raise RuntimeError('running daemon and AO CLI use different revisions; finish the update and restart AO')
-    if not (SOURCE / '.git').exists():
-        raise RuntimeError('AO source checkout is unavailable for build ancestry verification')
-    run('git', '-C', str(SOURCE), 'cat-file', '-e', daemon_rev + '^{commit}')
-    p = subprocess.run(['git', '-C', str(SOURCE), 'merge-base', '--is-ancestor', FIX, daemon_rev], timeout=20)
-    if p.returncode:
-        raise RuntimeError(f'AO build {daemon_rev[:12]} does not contain upstream replacement fix #7124')
-    return daemon_rev
 
 
 def sessions(project):
@@ -81,7 +57,7 @@ def inspect_binding(project, sid):
 
 
 def replace(project):
-    rev = gate_fixed_daemon()
+    gate_healthy_daemon()
     record = json.loads(run('ao', 'project', 'get', project, '--json')).get('project')
     if not isinstance(record, dict) or record.get('id') != project:
         raise RuntimeError('AO project lookup returned an unexpected identity')
@@ -90,7 +66,8 @@ def replace(project):
     if len(current) != 1 or current[0].get('status') != 'exited':
         raise RuntimeError('expected exactly one exited orchestrator; inspect project state before replacement')
     old_id = current[0]['id']
-    print(f'Preflight: fixed AO build {rev[:12]}, project {project}, exited {old_id}.')
+    print(f'Preflight: healthy AO daemon, project {project}, exited {old_id}.')
+    print('WARNING: AO builds without fix #7124 can pass this check but fail to resume after the controller restarts.', flush=True)
     run('ao', 'session', 'kill', old_id, '--project', project, timeout=45)
     if sessions(project).get(old_id, {}).get('status') != 'terminated':
         raise RuntimeError('old orchestrator did not become terminated; no spawn attempted')

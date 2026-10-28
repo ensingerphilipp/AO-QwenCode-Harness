@@ -20,14 +20,19 @@ class ReplacementTests(unittest.TestCase):
             f.flush()
             with self.assertRaises(ValueError): MOD.load_args(f.name)
 
+    def test_healthy_daemon_has_no_version_gate(self):
+        with patch.object(MOD, 'run', return_value='{"state":"ready","health":"ok"}') as run:
+            MOD.gate_healthy_daemon()
+            run.assert_called_once_with('ao', 'status', '--json')
+
     def test_fails_before_mutation_when_old_session_not_exited(self):
-        with patch.object(MOD, 'gate_fixed_daemon', return_value='a'*40), patch.object(MOD, 'run', return_value='{"project":{"id":"project"}}') as run, patch.object(MOD, 'sessions', return_value={'x': {'id':'x','status':'idle'}}):
+        with patch.object(MOD, 'gate_healthy_daemon'), patch.object(MOD, 'run', return_value='{"project":{"id":"project"}}') as run, patch.object(MOD, 'sessions', return_value={'x': {'id':'x','status':'idle'}}):
             with self.assertRaisesRegex(RuntimeError, 'exactly one exited'): MOD.replace('project')
             self.assertEqual(run.call_count, 1)  # read project only
 
     def test_terminates_exited_session_then_spawns_once(self):
         states=[{'old':{'id':'old','status':'exited'}}, {'old':{'id':'old','status':'terminated'}}, {'old':{'id':'old','status':'terminated'},'new':{'id':'new','status':'idle'}}]
-        with patch.object(MOD, 'gate_fixed_daemon', return_value='a'*40), patch.object(MOD, 'run', return_value='{"project":{"id":"project"}}') as run, patch.object(MOD, 'sessions', side_effect=states), patch.object(MOD, 'inspect_binding', return_value=True):
+        with patch.object(MOD, 'gate_healthy_daemon'), patch.object(MOD, 'run', return_value='{"project":{"id":"project"}}') as run, patch.object(MOD, 'sessions', side_effect=states), patch.object(MOD, 'inspect_binding', return_value=True):
             MOD.replace('project')
             commands=[c.args for c in run.call_args_list]
             self.assertEqual(len([c for c in commands if c[:3]==('ao','session','kill')]),1)
