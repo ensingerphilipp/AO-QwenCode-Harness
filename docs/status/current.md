@@ -1,6 +1,6 @@
 # Current Harness Implementation Status
 
-Last updated: 2026-10-08
+Last updated: 2026-10-28
 
 ## Completed
 
@@ -29,9 +29,9 @@ PR #105 on 2026-10-08 established the persistent same-session `/review` → late
 
 ## Current host deployment
 
-- Current observed opencode deployment has AO GUI/AppImage **v0.13.7** with Qwen Code **0.24.7**. The harness qualifies required AO/Qwen behavior by CLI capability rather than version strings.
+- Current observed opencode deployment has AO GUI/AppImage **v0.14.5** with Qwen Code **0.26.0**. The harness qualifies required AO/Qwen behavior by CLI capability rather than version strings.
 - As verified 2026-10-13, the local-inference host has **four logical inference slots** (two requests per SGLang estate, two estates), each with a 262,144-token context limit. Its operator-owned Qwen runtime caps tool and native-review workflow concurrency at `4` (`QWEN_CODE_MAX_TOOL_CONCURRENCY=4`, `QWEN_CODE_MAX_WORKFLOW_CONCURRENCY=4`); the documented stall setting is `QWEN_CODE_WORKFLOW_STALL_SECONDS=600`. These settings are host-specific and are not set by the harness.
-- On the inspected `opencode` host, the AO AppImage embeds version 0.13.7. The old 0.13.1 user-scoped tree was retired after the harness-managed `~/.local/bin/ao` launcher successfully bound to the 0.13.7 AppImage CLI. `ao --version` still prints `dev` upstream, so binary origin is established from the AppImage source signature and extracted CLI hash, not that string. The CLI launcher checks for AppImage updates on each invocation.
+- On the inspected `opencode` host, the AO AppImage embeds version 0.14.5. The old 0.13.1 user-scoped tree was retired after the harness-managed `~/.local/bin/ao` launcher successfully bound to the 0.13.7 AppImage CLI. `ao --version` still prints `dev` upstream, so binary origin is established from the AppImage source signature and extracted CLI hash, not that string. The CLI launcher checks for AppImage updates on each invocation.
 - Worker/reviewer → orchestrator lifecycle communication uses directed `ao send`; persistent reviewers run in Chat/ACP mode and AO uses steered follow-up turns for setup, native `/review`, and publish/discard control.
 - `ao-reconcile` and `ao-reboot-recovery` were intentionally removed from the current host and are not baseline harness components.
 
