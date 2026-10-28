@@ -177,7 +177,7 @@ Do not copy secrets, Qwen sessions, AO databases, worktrees, caches, or generate
 
 ### Prerequisites
 
-The target user must already have `python3`, `git`, `gh`, `qwen`, and `ao` in `PATH`. Qwen model/provider authentication and GitHub CLI authentication must already work. The harness does not install the AO GUI/AppImage or Qwen and never writes model settings or credentials. On supported Linux AppImage hosts it manages a stable `~/.local/bin/ao` launcher synchronized with the AppImage-bundled CLI.
+The target user must already have `python3`, `git`, `gh`, and `qwen` in `PATH`, plus an executable AO AppImage. A preinstalled `ao` CLI is not required; the installer binds its launcher to the AppImage-bundled CLI. Qwen model/provider authentication and GitHub CLI authentication must already work. The harness does not install the AO GUI/AppImage or Qwen and never writes model settings or credentials. On supported Linux AppImage hosts it manages a stable `~/.local/bin/ao` launcher synchronized with the AppImage-bundled CLI.
 
 ### Install host-global assets
 
@@ -231,7 +231,7 @@ This is the same fail-fast, non-repairing gate invoked by GitHub Actions.
 
 ## Current status
 
-The reusable policy layers, project templates, verification profiles, installation/migration tooling, host-global deterministic review admission, and manual override are implemented. The prior review architecture had an accepted production-project smoke qualification covering issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge. The new v0.4 persistent native-review backbone is implemented but still requires one clean end-to-end release-qualification run that produces exactly one native GitHub review.
+The reusable policy layers, project templates, verification profiles, installation/migration tooling, host-global deterministic review admission, and human-invoked status override and orchestrator replacement Skills are implemented. The prior review architecture had an accepted production-project smoke qualification covering issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge. The new v0.4 persistent native-review backbone is implemented but still requires one clean end-to-end release-qualification run that produces exactly one native GitHub review.
 
 Fresh-host/fresh-project end-to-end qualification also remains deliberately deferred. See [Current Harness Implementation Status](docs/status/current.md) for the authoritative progress record.
 
