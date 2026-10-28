@@ -12,6 +12,12 @@ The semantic-review runtime requires AO project sessions with `spawn --mode chat
 
 AO two-phase publication also requires the operator-scope Qwen setting `review.comment` to be disabled/false. Qwen treats a standing `review.comment: true` exactly like `/review --comment`, which would publish during the initial verdict turn before AO authorization. The installer and installation verifier probe the effective native `parse-args` result and fail closed if automatic commenting is enabled; they do not rewrite Qwen settings.
 
+### Installed-version evidence
+
+The dated [current host deployment record](status/current.md#current-host-deployment) lists observed AO, Qwen, bundled Node.js, Python, Git, GitHub CLI, and manual-override Skill versions with their verification sources. Treat those versions as an inspected deployment snapshot; compatibility is established by the capability checks above.
+
+For AO, read the installed AppImage's application package version and verify that its bundled `resources/daemon/ao` matches the launcher cache. `ao --version` currently reports `dev` and cannot establish the installed AO release by itself. For Qwen, compare `qwen --version` with the installed package/bundle metadata. Installer-manifest `commandVersions` record the installation event and may predate later operator-managed software updates.
+
 ### Operator-owned Qwen review runtime tuning
 
 Native Qwen review workflow concurrency and no-progress detection are Qwen runtime concerns, not harness policy. The harness therefore does not write or override these values. Operators running constrained or locally queued inference should set them in the Qwen host environment (for example `~/.qwen/.env`) before the Qwen/AO session starts:
