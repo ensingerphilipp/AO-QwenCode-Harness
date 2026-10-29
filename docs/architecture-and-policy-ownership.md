@@ -39,6 +39,7 @@ Update this document in the same commit whenever an architectural assumption, ow
 | `global/ao/rules/orchestratorRules.md` | Global AO | Coordination and routing lifecycle |
 | `global/ao/policies/semanticReviewPublication.md` | Global AO | GitHub semantic-review publication lifecycle |
 | `global/qwen/skills/ao-semantic-review-override/` | Global operator Skill | Human-only administrative override of the `ao/semantic-review` required status |
+| `global/qwen/skills/ao-init-project/` | Global operator Skill | Explicit guided onboarding using the existing renderer and AO CLI; Git identity determines reuse versus registration |
 | `global/qwen/skills/ao-replace-orchestrator/` | Global operator Skill | Explicit human-only replacement of one exited project orchestrator, verified after spawn without an AO version gate |
 | `templates/project/PROJECT.md` | Project baseline | Product scope, HITL and public-contract template |
 | `templates/project/ARCHITECTURE.md` | Project baseline | Architecture and technical-decision template |
@@ -70,6 +71,7 @@ AO-QwenCode-Harness/
 │   └── qwen/
 │       ├── QWEN.md
 │       └── skills/
+│           ├── ao-init-project/
 │           ├── ao-semantic-review-override/
 │           └── ao-replace-orchestrator/
 ├── templates/
@@ -126,6 +128,8 @@ The structure is intentional: host-global deployable assets are separated from p
 38. AO two-phase review requires the initial native `/review` to be non-posting. Before reviewer creation, AO uses Qwen's native argument parser to require `comment.effective == false`; operator-scope `review.comment: true` is therefore an incompatible host setting and installation verification must fail closed rather than modify it. The reviewer independently checks the same native Step 1 fact as defense in depth.
 39. Reviewer setup/rules may describe future publication controls but never constitute current publication authorization. Only a later standalone `AO_SEMANTIC_REVIEW_PUBLISH` turn for the exact review identity authorizes the native `post comments` continuation.
 40. Browser QA policy is layered rather than duplicated. `global/ao/rules/agentRules.md` requires implementation workers to exercise affected browser-facing behavior before handoff and to use visual inspection only when it adds evidence. AO's upstream `using-ao` browser/preview guidance owns the exact session-browser commands, target routing, isolation, and capture mechanics. Deterministic browser regression checks belong in each project's `scripts/verify` and CI when supported by repository evidence; project-specific UI/UX invariants belong in project contracts and tests. The AO session-owned browser is the required interactive browser for the application under development; separate Qwen/browser-MCP runtimes are not substitutes for that page.
+
+41. Manual project onboarding is available before or after AO GUI registration. The `ao-init-project` Skill uses the installed manifest to locate the maintained source checkout and invokes `install/onboard_project.py`; templates and rendering remain owned by `init_project.py`. Git common-directory identity resolves linked worktrees to the existing project. Inspection failures never authorize registration. Preparation refuses conflicting contracts; configuration requires the baseline on the default branch, rechecks identity, preserves unrelated settings/hooks, snapshots prior config privately, and verifies the resulting five harness invariants. It does not start/restart sessions or run global migration.
 
 ## Deduplication rules
 
