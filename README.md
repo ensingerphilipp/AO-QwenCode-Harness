@@ -194,6 +194,10 @@ The manifest-controlled installer is idempotent. It fails on unmanaged or locall
 
 ### Initialize a new project
 
+For the GUI workflow, add the repository in AO, select Qwen, then invoke `/ao-init-project` in the orchestrator chat. The same Skill can onboard an unregistered Git repository from Qwen with `/ao-init-project /absolute/path/to/repository`. It inspects the repo, asks about missing decisions, prepares and verifies the project files, and configures the existing AO project or registers a new one as needed. Configuration follows acceptance of the baseline on the default branch. Keep the installed harness's source checkout available.
+
+For direct CLI initialization of an unregistered project:
+
 First run the read-only inspection contract in [`templates/prompts/inspect-project.md`](templates/prompts/inspect-project.md) and resolve every reported human decision. Then:
 
 ```bash
@@ -205,7 +209,7 @@ bash install/init-project.sh \
 
 Initialization renders project contracts and verification from observed repository facts, registers the AO project, configures Qwen workers and orchestrator, and verifies the resulting installation. It does not commit or push project changes.
 
-For the full procedure, options, and ownership boundary, read [Installation and New-Project Initialization](docs/installation.md). Existing registered projects must use the preservation-first [migration procedure](docs/migration.md).
+For the full procedure, options, and ownership boundary, read [Installation and New-Project Initialization](docs/installation.md). Established deployments with conflicting contracts or broader cutover needs use the [migration procedure](docs/migration.md).
 
 ## Repository map
 
@@ -231,7 +235,7 @@ This is the same fail-fast, non-repairing gate invoked by GitHub Actions.
 
 ## Current status
 
-The reusable policy layers, project templates, verification profiles, installation/migration tooling, host-global deterministic review admission, and human-invoked status override and orchestrator replacement Skills are implemented. The prior review architecture had an accepted production-project smoke qualification covering issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge. The new v0.4 persistent native-review backbone is implemented but still requires one clean end-to-end release-qualification run that produces exactly one native GitHub review.
+The reusable policy layers, project templates, verification profiles, installation/migration tooling, host-global deterministic review admission, and human-invoked onboarding, status override, and orchestrator replacement Skills are implemented. The prior review architecture had an accepted production-project smoke qualification covering issue intake, implementation, deterministic CI, exact-HEAD semantic review, GitHub publication, and manual merge. The new v0.4 persistent native-review backbone is implemented but still requires one clean end-to-end release-qualification run that produces exactly one native GitHub review.
 
 Fresh-host/fresh-project end-to-end qualification also remains deliberately deferred. See [Current Harness Implementation Status](docs/status/current.md) for the authoritative progress record.
 

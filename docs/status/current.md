@@ -1,6 +1,6 @@
 # Current Harness Implementation Status
 
-Last updated: 2026-10-28
+Last updated: 2026-10-29
 
 ## Completed
 
@@ -17,6 +17,7 @@ Last updated: 2026-10-28
 - J — host-independent installation and new-project registration
 - K — Premiumizearr-Nova migration, installed runtime verification, and accepted tracker-intake smoke qualification
 - Operator escape hatch — model-hidden manual `ao/semantic-review` status override packaged and managed as a host-global Skill
+- Project onboarding — user-invoked `ao-init-project` reuses GUI registrations or registers unregistered Git repositories, with repository inspection, human decision resolution, baseline publication, and configuration verification
 - Manual orchestrator recovery — model-hidden `/ao-replace-orchestrator <project-id>` Skill installed as a host-global asset; it requires one exited orchestrator and checks the current provider branch after one replacement attempt
 - Native review v0.4.0 — persistent Qwen Chat/ACP reviewer backbone using native `/review`; AO-managed reviews are fixed to native high because posting is high-only; the old risk/effort selector and `.qwen/review-config.json` consumption, nested `qwen review run`, Monitor envelopes, synthetic `result.json`, semantic artifact validation, automatic resume, and AO-composed semantic summary comments are removed
 - Two-phase native publication — AO preflights a non-posting verdict (`comment.effective=false`), revalidates the exact head after the verdict, then authorizes the same reviewer to publish or discard; native Step 9 cleanup is deferred until successful submission or discard and Qwen owns the internal mechanics of later `post comments` continuation

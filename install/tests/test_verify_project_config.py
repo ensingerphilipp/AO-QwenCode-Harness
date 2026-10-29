@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import shlex
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,7 +24,7 @@ class ProjectConfigInvariantTests(unittest.TestCase):
             "orchestratorRules": f"Before any coordination action, read and follow the file at `{self.home / '.ao/rules/orchestratorRules.md'}`.",
             "worker": {"agent": "qwen"},
             "orchestrator": {"agent": "qwen"},
-            "postCreate": [f"python3 {self.home / '.local/bin/ao-refresh-orchestrator'} run"],
+            "postCreate": [f"python3 {shlex.quote(str(self.home / '.local/bin/ao-refresh-orchestrator'))} run"],
         }
 
     def test_exact_harness_config_passes(self):

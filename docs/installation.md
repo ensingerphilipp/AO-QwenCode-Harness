@@ -1,6 +1,6 @@
 # Host Installation and New-Project Initialization
 
-This document defines the supported installation path for the AO + Qwen Code harness. It covers fresh/user-scoped installation and initialization of a **new** AO project. Existing registered AO projects are migrated separately so unknown configuration is never replaced implicitly.
+This document defines the supported installation path for the AO + Qwen Code harness. It covers host installation and onboarding a repository either before AO registration or after adding it through the AO GUI. The onboarding Skill preserves existing AO identity and unrelated configuration. Broader cutovers of an established harness deployment use the migration procedure.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ bash install/verify-install.sh
 
 The installer deploys `~/.local/bin/ao` plus a Python launcher helper at `~/.local/lib/ao-qwen-code-harness/ao_cli.py`. The launcher extracts the AppImage-bundled CLI on first use or after an AppImage update; it never runs or changes a different AO version. An existing unmanaged `ao` symlink requires explicit `--replace` and is backed up. If `~/.profile` does not already mention `~/.local/bin`, the installer adds a guarded PATH entry for future login shells; it refuses to overwrite a symlinked or nonregular profile. AppImage absence or failed extraction fails closed; the GUI/AppImage is not installed or updated by the harness.
 
-The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, the human-only `ao-semantic-review-override` and `ao-replace-orchestrator` Skills, the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
+The installer deploys the global Qwen context, AO worker/orchestrator rules, semantic-review publication policy, the human-only `ao-init-project`, `ao-semantic-review-override`, and `ao-replace-orchestrator` Skills, the orchestrator refresh utility, and the deterministic host-global semantic-review admission queue to standard user locations under `$HOME`.
 
 Installation state is recorded at `${XDG_STATE_HOME:-$HOME/.local/state}/ao-qwen-code-harness/install-manifest.json`. A repeated identical install is a no-op. A target previously managed by the installer may be upgraded when its installed hash still matches the manifest.
 
@@ -54,13 +54,27 @@ When upgrading a pre-queue harness installation, the installer retains the legac
 
 If an unmanaged or locally modified target differs from the harness source, installation fails. `--replace` is explicit operator authorization to back up that target under the harness state directory and replace it.
 
+## Onboard through Qwen or the AO GUI
+
+After adding a repository in AO's GUI and selecting Qwen, invoke `/ao-init-project` in the orchestrator chat. For a repository not yet registered with AO, invoke `/ao-init-project /absolute/path/to/repository` from a Qwen session. The Skill is explicitly user-invoked and supports both paths.
+
+The Skill uses `install/onboard_project.py` from the harness checkout recorded in the host installation manifest. Keep that checkout available; the installed wrapper reports a missing checkout instead of guessing another source. The helper's `inspect` action compares Git common directories, so linked worktrees and path aliases reuse the correct AO project. Unknown registration state or conflicting IDs stop the operation.
+
+The agent inspects the repository using the existing prompt/schema, resolves missing product and architecture decisions with the human, and saves the inspection JSON outside the worktree. An unregistered project needs an agreed project ID. A plain folder must first become a Git repository with an initial commit; existing files are reviewed before staging, and an empty product needs an agreed initial scaffold and meaningful verification.
+
+Use a separate linked onboarding worktree so a squash/rebase merge cannot leave the running orchestrator on a divergent branch. The `prepare` action renders the baseline using the existing templates. It preserves existing contracts by refusing conflicting files and symlinked targets. The checkout must be clean except AO's untracked `.qwen/settings.json`. The Skill verifies and commits the reviewed baseline through the project's normal PR workflow; invoking the Skill does not authorize merging that PR.
+
+Before activation, configure and fetch the project remote, record its confirmed default branch, and verify at least one required deterministic CI check under the repository policy. A local-only repository can be prepared but needs a remote for the orchestrator refresh hook. After the accepted baseline is available on the remote default branch, `configure` verifies those files and the host installation, then rechecks registration. It reuses an existing project, or registers the primary checkout only when no matching project exists. It applies the two Qwen role selections, the two global rule loaders, and the refresh hook through AO's CLI, preserving other configuration and existing hooks. An absent default-branch setting is filled from the resolved inspection; a conflicting explicit value is refused. Tracker intake is unchanged. An existing explicit semantic-review choice is preserved; new baselines default to enabled.
+
+The old AO config is saved in a private file before replacement. A partial failure leaves the registration available for inspection and retry; the helper never removes/re-adds a project or restarts an orchestrator. AO resolves configuration when sessions spawn, so an existing orchestrator must refresh its original checkout and explicitly read the global rules to continue. The Skill reports completion only after default-branch and configuration verification. It is not a general migration tool for conflicting existing contracts or workspace projects.
+
 ## Inspect a repository before initialization
 
 Run the read-only task in `templates/prompts/inspect-project.md` and persist its JSON result. The result must conform to the current `config/project-inspection.schema.json` (schemaVersion 2) and contain no unresolved `decisionsRequired` entries before initialization. Schema v2 removes the retired review-risk/effort payload.
 
 Human decisions identified during inspection must be resolved in the inspection result; `init-project` does not invent values to make rendering succeed.
 
-## Initialize a new project
+## Initialize a new project directly from the command line
 
 The repository must be clean and the AO project ID must not already be registered:
 
@@ -87,4 +101,4 @@ If AO configuration fails after a new registration is created, the initializer r
 
 Run `bash scripts/verify` in the initialized project and commit the resulting baseline through the project's normal PR workflow. Host installation and project initialization do not commit or push repository changes.
 
-Do not use `init-project` to update an existing AO registration or retrofit an existing project contract. That operation requires migration because current project settings and files must be inspected and preserved deliberately.
+The original `init-project.sh` command remains a registration-first CLI path and refuses an existing AO project. Use `ao-init-project` for GUI-added projects whose baseline is not yet established. Use migration for broader changes to an established deployment; neither initializer silently overwrites conflicting project contracts.

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 
@@ -50,7 +51,7 @@ def project_config_failures(config: dict, home: Path) -> list[str]:
         f"Before any coordination action, read and follow the file at "
         f"`{home / '.ao/rules/orchestratorRules.md'}`."
     )
-    expected_refresh = f"python3 {home / '.local/bin/ao-refresh-orchestrator'} run"
+    expected_refresh = f"python3 {shlex.quote(str(home / '.local/bin/ao-refresh-orchestrator'))} run"
     if config.get("agentRules") != expected_agent:
         failures.append("AO project agentRules loader does not match harness invariant")
     if config.get("orchestratorRules") != expected_orchestrator:
